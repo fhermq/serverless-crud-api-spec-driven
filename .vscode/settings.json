@@ -1,0 +1,10 @@
+{
+  "aws.profile": "default",
+  "aws.region": "us-east-1",
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/awslabs/goformation/master/schema/sam.schema.json": [
+      "template.yaml",
+      "infrastructure/template.yaml"
+    ]
+  }
+}

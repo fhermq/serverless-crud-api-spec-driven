@@ -1,0 +1,373 @@
+openapi: 3.0.3
+info:
+  title: Serverless CRUD API
+  description: |
+    A serverless CRUD API built with AWS Lambda functions, API Gateway, and DynamoDB.
+    This API provides endpoints for managing items with full CRUD operations.
+    
+    ## Features
+    - Multi-language Lambda functions (Go and Node.js)
+    - Auto-scaling serverless architecture
+    - RESTful API design
+    - Comprehensive error handling
+    - Input validation
+    
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.example.com/v1
+    description: Production server
+  - url: https://staging-api.example.com/v1
+    description: Staging server
+  - url: http://localhost:3000
+    description: Local development server
+
+paths:
+  /items:
+    post:
+      summary: Create a new item
+      description: Creates a new item with the provided data
+      operationId: createItem
+      tags:
+        - Items
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItemRequest'
+            examples:
+              electronics:
+                summary: Electronics item
+                value:
+                  name: "Laptop"
+                  description: "High-performance gaming laptop"
+                  category: "electronics"
+                  price: 1299.99
+              clothing:
+                summary: Clothing item
+                value:
+                  name: "T-Shirt"
+                  description: "Cotton crew neck t-shirt"
+                  category: "clothing"
+                  price: 24.99
+      responses:
+        '201':
+          description: Item created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validation_error:
+                  summary: Validation error
+                  value:
+                    error: "Validation Error"
+                    message: "Invalid input data"
+                    details:
+                      - "name: Name is required"
+                      - "price: Price must be greater than 0"
+                    timestamp: "2024-01-15T10:30:00Z"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /items/{id}:
+    get:
+      summary: Get an item by ID
+      description: Retrieves a specific item by its unique identifier
+      operationId: getItem
+      tags:
+        - Items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the item
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Item retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '404':
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not_found:
+                  summary: Item not found
+                  value:
+                    error: "Not Found"
+                    message: "Item with id '123e4567-e89b-12d3-a456-426614174000' not found"
+                    timestamp: "2024-01-15T10:30:00Z"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update an existing item
+      description: Updates an existing item with the provided data
+      operationId: updateItem
+      tags:
+        - Items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the item to update
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateItemRequest'
+            examples:
+              partial_update:
+                summary: Partial update
+                value:
+                  name: "Updated Laptop"
+                  price: 1199.99
+              full_update:
+                summary: Full update
+                value:
+                  name: "Gaming Laptop Pro"
+                  description: "Professional gaming laptop with RTX graphics"
+                  category: "electronics"
+                  price: 1599.99
+      responses:
+        '200':
+          description: Item updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete an item
+      description: Deletes an existing item by its unique identifier
+      operationId: deleteItem
+      tags:
+        - Items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the item to delete
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '204':
+          description: Item deleted successfully
+        '404':
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Item:
+      type: object
+      required:
+        - id
+        - name
+        - category
+        - price
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the item
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Name of the item
+          example: "Laptop"
+        description:
+          type: string
+          maxLength: 500
+          description: Optional description of the item
+          example: "High-performance gaming laptop"
+        category:
+          type: string
+          enum: [electronics, clothing, books, home, sports, other]
+          description: Category of the item
+          example: "electronics"
+        price:
+          type: number
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Price of the item in USD
+          example: 1299.99
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the item was created
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the item was last updated
+          example: "2024-01-15T10:30:00Z"
+
+    CreateItemRequest:
+      type: object
+      required:
+        - name
+        - category
+        - price
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Name of the item
+          example: "Laptop"
+        description:
+          type: string
+          maxLength: 500
+          description: Optional description of the item
+          example: "High-performance gaming laptop"
+        category:
+          type: string
+          enum: [electronics, clothing, books, home, sports, other]
+          description: Category of the item
+          example: "electronics"
+        price:
+          type: number
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Price of the item in USD
+          example: 1299.99
+
+    UpdateItemRequest:
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Name of the item
+          example: "Updated Laptop"
+        description:
+          type: string
+          maxLength: 500
+          description: Optional description of the item
+          example: "Updated high-performance gaming laptop"
+        category:
+          type: string
+          enum: [electronics, clothing, books, home, sports, other]
+          description: Category of the item
+          example: "electronics"
+        price:
+          type: number
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Price of the item in USD
+          example: 1199.99
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error type or category
+          example: "Validation Error"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Invalid input data"
+        details:
+          type: array
+          items:
+            type: string
+          description: Additional error details
+          example: ["name: Name is required", "price: Price must be greater than 0"]
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the error occurred
+          example: "2024-01-15T10:30:00Z"
+        requestId:
+          type: string
+          description: Unique identifier for the request (for debugging)
+          example: "req-123e4567-e89b-12d3-a456-426614174000"
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Items
+    description: Operations for managing items

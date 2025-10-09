@@ -1,0 +1,20 @@
+{
+  "httpMethod": "POST",
+  "path": "/items",
+  "pathParameters": null,
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  },
+  "body": "{\"name\":\"Test Item\",\"description\":\"A test item for local development\",\"category\":\"electronics\",\"price\":99.99}",
+  "requestContext": {
+    "requestId": "test-request-id-create",
+    "stage": "dev",
+    "httpMethod": "POST",
+    "path": "/items",
+    "accountId": "123456789012",
+    "resourceId": "resource-id",
+    "resourcePath": "/items"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "Parameters": {
+    "Stage": "staging",
+    "TableName": "serverless-crud-api-staging-items"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "httpMethod": "PUT",
+  "path": "/items/test-item-id",
+  "pathParameters": {
+    "id": "test-item-id"
+  },
+  "queryStringParameters": null,
+  "headers": {
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  },
+  "body": "{\"name\":\"Updated Test Item\",\"description\":\"An updated test item\",\"price\":149.99}",
+  "requestContext": {
+    "requestId": "test-request-id-update",
+    "stage": "dev",
+    "httpMethod": "PUT",
+    "path": "/items/test-item-id",
+    "accountId": "123456789012",
+    "resourceId": "resource-id",
+    "resourcePath": "/items/{id}"
+  }
+}

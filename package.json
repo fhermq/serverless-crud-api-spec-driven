@@ -1,0 +1,66 @@
+{
+  "name": "serverless-crud-api",
+  "version": "1.0.0",
+  "description": "Serverless CRUD API with multi-language Lambda functions",
+  "private": true,
+  "scripts": {
+    "lint": "eslint . --ext .js,.ts",
+    "lint:fix": "eslint . --ext .js,.ts --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "type-check": "tsc --noEmit --project shared/tsconfig.json",
+    "test:all": "npm run test:node && npm run test:go",
+    "test:node": "cd functions/get-item && npm test && cd ../update-item && npm test",
+    "test:go": "cd functions/create-item && go test ./... && cd ../delete-item && go test ./...",
+    "build:all": "npm run build:node && npm run build:go",
+    "build:node": "cd functions/get-item && npm run build && cd ../update-item && npm run build",
+    "build:go": "cd functions/create-item && go build -o main main.go && cd ../delete-item && go build -o main main.go",
+    "deploy:dev": "infrastructure/scripts/deploy.sh --stage dev",
+    "deploy:staging": "infrastructure/scripts/deploy.sh --stage staging",
+    "deploy:prod": "infrastructure/scripts/deploy.sh --stage prod",
+    "local:start": "scripts/start-local-api.sh",
+    "local:seed": "scripts/seed-test-data.sh",
+    "validate:api": "swagger-codegen validate -i docs/api-spec.yaml",
+    "aws:validate-template": "aws cloudformation validate-template --template-body file://infrastructure/template.yaml",
+    "sam:build": "cd infrastructure && sam build",
+    "sam:deploy:guided": "cd infrastructure && sam deploy --guided",
+    "sam:local:start-api": "cd infrastructure && sam local start-api --host 0.0.0.0",
+    "sam:local:invoke": "cd infrastructure && sam local invoke",
+    "aws:logs": "aws logs tail /aws/lambda/serverless-crud-api-dev --follow"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0",
+    "@apidevtools/swagger-parser": "^10.1.0"
+  },
+  "workspaces": [
+    "functions/get-item",
+    "functions/update-item",
+    "shared"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/serverless-crud-api.git"
+  },
+  "keywords": [
+    "serverless",
+    "aws",
+    "lambda",
+    "api-gateway",
+    "dynamodb",
+    "crud",
+    "rest-api",
+    "go",
+    "nodejs",
+    "typescript"
+  ],
+  "author": "Your Team",
+  "license": "MIT"
+}

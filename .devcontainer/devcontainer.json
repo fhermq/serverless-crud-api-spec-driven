@@ -1,0 +1,76 @@
+{
+  "name": "Serverless CRUD API Development",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "node-dev",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.vscode-typescript-next",
+        "ms-vscode.vscode-json",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-eslint",
+        "golang.go",
+        "ms-python.python",
+        "amazonwebservices.aws-toolkit-vscode",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml",
+        "kddejong.vscode-cfn-lint",
+        "rangav.vscode-thunder-client",
+        "ms-vscode.test-adapter-converter",
+        "hbenl.vscode-test-explorer"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": true
+        },
+        "go.toolsManagement.checkForUpdates": "local",
+        "go.useLanguageServer": true,
+        "go.gopath": "/go",
+        "go.goroot": "/usr/local/go",
+        "aws.samcli.location": "/usr/local/bin/sam",
+        "aws.profile": "default",
+        "aws.region": "us-east-1",
+        "yaml.schemas": {
+          "https://raw.githubusercontent.com/awslabs/goformation/master/schema/sam.schema.json": "template.yaml"
+        },
+        "files.exclude": {
+          "**/node_modules": true,
+          "**/.git": true,
+          "**/.DS_Store": true,
+          "**/coverage": true,
+          "**/.aws-sam": true,
+          "**/.serverless": true
+        }
+      }
+    }
+  },
+
+  "forwardPorts": [8000, 8001, 4566, 3000],
+  "portsAttributes": {
+    "8000": {
+      "label": "DynamoDB Local",
+      "onAutoForward": "notify"
+    },
+    "8001": {
+      "label": "DynamoDB Admin",
+      "onAutoForward": "openBrowser"
+    },
+    "4566": {
+      "label": "LocalStack",
+      "onAutoForward": "notify"
+    },
+    "3000": {
+      "label": "Local API",
+      "onAutoForward": "notify"
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  
+  "remoteUser": "node"
+}

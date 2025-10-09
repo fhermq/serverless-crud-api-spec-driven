@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # Local DynamoDB for development
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: serverless-crud-dynamodb
+    ports:
+      - "8000:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data
+    working_dir: /home/dynamodblocal
+    networks:
+      - serverless-network
+
+  # LocalStack for API Gateway and Lambda simulation
+  localstack:
+    image: localstack/localstack:latest
+    container_name: serverless-crud-localstack
+    ports:
+      - "4566:4566"  # LocalStack Gateway
+      - "4510-4559:4510-4559"  # External services port range
+    environment:
+      - SERVICES=apigateway,lambda,iam,cloudformation,logs,events
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - HOST_TMP_FOLDER=/tmp/localstack
+    volumes:
+      - "/tmp/localstack:/tmp/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - serverless-network
+
+  # DynamoDB Admin UI (optional)
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: serverless-crud-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://dynamodb-local:8000
+    depends_on:
+      - dynamodb-local
+    networks:
+      - serverless-network
+
+  # Go development container
+  go-dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/go/Dockerfile
+    container_name: serverless-crud-go-dev
+    volumes:
+      - .:/workspace
+      - go_modules:/go/pkg/mod
+    working_dir: /workspace
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      - dynamodb-local
+    networks:
+      - serverless-network
+    profiles:
+      - go-dev
+
+  # Node.js development container
+  node-dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/node/Dockerfile
+    container_name: serverless-crud-node-dev
+    volumes:
+      - .:/workspace
+      - node_modules:/workspace/node_modules
+    working_dir: /workspace
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      - dynamodb-local
+    networks:
+      - serverless-network
+    profiles:
+      - node-dev
+
+volumes:
+  dynamodb_data:
+  go_modules:
+  node_modules:
+
+networks:
+  serverless-network:
+    driver: bridge

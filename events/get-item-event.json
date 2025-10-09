@@ -1,0 +1,21 @@
+{
+  "httpMethod": "GET",
+  "path": "/items/test-item-id",
+  "pathParameters": {
+    "id": "test-item-id"
+  },
+  "queryStringParameters": null,
+  "headers": {
+    "Accept": "application/json"
+  },
+  "body": null,
+  "requestContext": {
+    "requestId": "test-request-id-get",
+    "stage": "dev",
+    "httpMethod": "GET",
+    "path": "/items/test-item-id",
+    "accountId": "123456789012",
+    "resourceId": "resource-id",
+    "resourcePath": "/items/{id}"
+  }
+}

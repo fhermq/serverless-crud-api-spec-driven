@@ -13,8 +13,10 @@ build/
 .env.*.local
 
 # AWS
-.aws/
+.aws/credentials
 aws-exports.js
+.aws-sam/
+.serverless/
 
 # Logs
 logs/
@@ -34,7 +36,6 @@ coverage/
 *.lcov
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -88,3 +89,11 @@ target/
 
 # CloudFormation
 packaged-template.yaml
+samconfig.toml
+
+# Docker
+.docker/
+
+# Local development
+.env.development
+.env.test
