@@ -97,3 +97,5 @@ samconfig.toml
 # Local development
 .env.development
 .env.test
+
+.kiro/settings/mcp.json
