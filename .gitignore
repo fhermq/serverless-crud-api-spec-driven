@@ -98,4 +98,7 @@ samconfig.toml
 .env.development
 .env.test
 
+# Kiro settings (contains sensitive tokens)
+.kiro/settings/
+
 .kiro/settings/mcp.json
