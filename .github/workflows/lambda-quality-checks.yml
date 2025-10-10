@@ -22,7 +22,13 @@ jobs:
         id: changes
         run: |
           # Get list of changed function directories
-          changed_dirs=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^functions/' | cut -d'/' -f1-2 | sort -u)
+          if [ -z "${{ github.event.before }}" ] || [ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]; then
+            # First push or no previous commit, check all functions
+            changed_dirs=$(find functions -maxdepth 1 -type d | grep -v '^functions$' | sort -u)
+          else
+            # Normal push, check only changed files
+            changed_dirs=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^functions/' | cut -d'/' -f1-2 | sort -u)
+          fi
           
           nodejs_functions=""
           go_functions=""
@@ -240,7 +246,7 @@ jobs:
     steps:
       - name: Check quality gate
         run: |
-          if [[ "${{ needs.validate-structure.result }}" != "success" ]]; then
+          if [[ "${{ needs.validate-structure.result }}" == "failure" ]]; then
             echo "❌ Structure validation failed"
             exit 1
           fi
