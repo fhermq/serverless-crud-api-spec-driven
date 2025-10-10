@@ -15,21 +15,21 @@ func TestMain(m *testing.M) {
 	// Set up test environment
 	os.Setenv("DYNAMODB_TABLE_NAME", "test-table")
 	os.Setenv("AWS_REGION", "us-east-1")
-	
+
 	// Initialize test validator
 	validate = validator.New()
-	
+
 	// Run tests
 	code := m.Run()
-	
+
 	// Clean up
 	os.Exit(code)
 }
 
 func TestValidateCreateItemRequest(t *testing.T) {
 	tests := []struct {
-		name          string
-		request       CreateItemRequest
+		name           string
+		request        CreateItemRequest
 		expectedErrors int
 	}{
 		{
@@ -203,7 +203,7 @@ func TestSanitizeCreateItemRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := sanitizeCreateItemRequest(tt.input)
-			
+
 			if result.Name != tt.expected.Name {
 				t.Errorf("Expected name '%s', got '%s'", tt.expected.Name, result.Name)
 			}
@@ -213,7 +213,7 @@ func TestSanitizeCreateItemRequest(t *testing.T) {
 			if result.Price != tt.expected.Price {
 				t.Errorf("Expected price %f, got %f", tt.expected.Price, result.Price)
 			}
-			
+
 			if tt.expected.Description == nil && result.Description != nil {
 				t.Errorf("Expected description to be nil, got '%s'", *result.Description)
 			} else if tt.expected.Description != nil && result.Description == nil {

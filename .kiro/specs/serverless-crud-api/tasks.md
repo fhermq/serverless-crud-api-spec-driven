@@ -55,21 +55,21 @@
   - Test DynamoDB error scenarios
   - _Requirements: 2.1, 4.1_
 
-- [ ] 4. Implement Get Item Lambda function (Node.js)
-- [ ] 4.1 Set up Node.js Lambda function structure
+- [x] 4. Implement Get Item Lambda function (Node.js)
+- [x] 4.1 Set up Node.js Lambda function structure
   - Initialize npm project with AWS SDK dependencies
   - Create handler function with proper event handling
   - Set up DynamoDB DocumentClient for Node.js
   - _Requirements: 1.5, 2.2, 5.5_
 
-- [ ] 4.2 Implement get item business logic
+- [x] 4.2 Implement get item business logic
   - Extract item ID from API Gateway path parameters
   - Implement DynamoDB GetItem operation
   - Handle item not found scenarios with 404 responses
   - Return item data with proper HTTP status codes
   - _Requirements: 2.2, 4.1, 4.2_
 
-- [ ] 4.3 Write unit tests for get item function
+- [x] 4.3 Write unit tests for get item function
   - Test successful item retrieval
   - Test item not found scenarios
   - Test DynamoDB error handling

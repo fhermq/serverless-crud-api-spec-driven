@@ -1,0 +1,263 @@
+name: Lambda Function Quality Checks
+
+on:
+  pull_request:
+    paths:
+      - 'functions/**'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'functions/**'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      nodejs-functions: ${{ steps.changes.outputs.nodejs-functions }}
+      go-functions: ${{ steps.changes.outputs.go-functions }}
+      changed-functions: ${{ steps.changes.outputs.changed-functions }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect changed functions
+        id: changes
+        run: |
+          # Get list of changed function directories
+          changed_dirs=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^functions/' | cut -d'/' -f1-2 | sort -u)
+          
+          nodejs_functions=""
+          go_functions=""
+          all_functions=""
+          
+          for dir in $changed_dirs; do
+            if [ -f "$dir/package.json" ]; then
+              nodejs_functions="$nodejs_functions $dir"
+            elif [ -f "$dir/go.mod" ]; then
+              go_functions="$go_functions $dir"
+            fi
+            all_functions="$all_functions $dir"
+          done
+          
+          echo "nodejs-functions=$nodejs_functions" >> $GITHUB_OUTPUT
+          echo "go-functions=$go_functions" >> $GITHUB_OUTPUT
+          echo "changed-functions=$all_functions" >> $GITHUB_OUTPUT
+
+  validate-structure:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed-functions != ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Validate Lambda function structure
+        run: |
+          python3 scripts/validate-lambda-structure.py
+      - name: Validate package.json files
+        run: |
+          python3 scripts/validate-package-json.py
+
+  nodejs-quality-checks:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.nodejs-functions != ''
+    strategy:
+      matrix:
+        function-dir: ${{ fromJson(needs.detect-changes.outputs.nodejs-functions) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: '${{ matrix.function-dir }}/package-lock.json'
+      
+      - name: Install dependencies
+        working-directory: ${{ matrix.function-dir }}
+        run: npm ci
+      
+      - name: Run ESLint
+        working-directory: ${{ matrix.function-dir }}
+        run: npm run lint
+      
+      - name: Run tests with coverage
+        working-directory: ${{ matrix.function-dir }}
+        run: npm run test:coverage
+      
+      - name: Check test coverage
+        working-directory: ${{ matrix.function-dir }}
+        run: |
+          # Extract coverage percentage from Jest output
+          coverage=$(npm run test:coverage 2>&1 | grep -o 'All files.*[0-9]\+\.[0-9]\+' | grep -o '[0-9]\+\.[0-9]\+' | tail -1)
+          if (( $(echo "$coverage < 80" | bc -l) )); then
+            echo "❌ Test coverage ($coverage%) is below 80% threshold"
+            exit 1
+          else
+            echo "✅ Test coverage ($coverage%) meets 80% threshold"
+          fi
+      
+      - name: Security audit
+        working-directory: ${{ matrix.function-dir }}
+        run: npm audit --audit-level=high
+      
+      - name: Check for hardcoded values
+        working-directory: ${{ matrix.function-dir }}
+        run: |
+          if grep -r "localhost\|127.0.0.1\|hardcoded" . --exclude-dir=node_modules --exclude="*.test.*"; then
+            echo "❌ Hardcoded values found"
+            exit 1
+          fi
+      
+      - name: Verify shared utilities usage
+        working-directory: ${{ matrix.function-dir }}
+        run: |
+          if ! grep -q "@serverless-crud-api/shared" package.json; then
+            echo "❌ Function should use shared utilities"
+            exit 1
+          fi
+
+  go-quality-checks:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.go-functions != ''
+    strategy:
+      matrix:
+        function-dir: ${{ fromJson(needs.detect-changes.outputs.go-functions) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Install dependencies
+        working-directory: ${{ matrix.function-dir }}
+        run: go mod download
+      
+      - name: Run gofmt
+        working-directory: ${{ matrix.function-dir }}
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "❌ Code is not properly formatted"
+            gofmt -s -l .
+            exit 1
+          fi
+      
+      - name: Run go vet
+        working-directory: ${{ matrix.function-dir }}
+        run: go vet ./...
+      
+      - name: Run tests with coverage
+        working-directory: ${{ matrix.function-dir }}
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
+      
+      - name: Check test coverage
+        working-directory: ${{ matrix.function-dir }}
+        run: |
+          coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          if (( $(echo "$coverage < 80" | bc -l) )); then
+            echo "❌ Test coverage ($coverage%) is below 80% threshold"
+            exit 1
+          else
+            echo "✅ Test coverage ($coverage%) meets 80% threshold"
+          fi
+      
+      - name: Run staticcheck
+        working-directory: ${{ matrix.function-dir }}
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+      
+      - name: Security scan with gosec
+        working-directory: ${{ matrix.function-dir }}
+        run: |
+          go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+          gosec ./...
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: [nodejs-quality-checks, go-quality-checks]
+    if: always() && (needs.nodejs-quality-checks.result == 'success' || needs.go-quality-checks.result == 'success')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up SAM CLI
+        uses: aws-actions/setup-sam@v2
+      
+      - name: Build SAM application
+        run: sam build
+      
+      - name: Start local API
+        run: |
+          sam local start-api --port 3001 &
+          sleep 10
+      
+      - name: Run integration tests
+        run: |
+          # Add integration test commands here
+          echo "Integration tests would run here"
+          # curl -f http://localhost:3001/health || exit 1
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed-functions != ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'functions/'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  performance-benchmarks:
+    runs-on: ubuntu-latest
+    needs: [nodejs-quality-checks, go-quality-checks]
+    if: always() && (needs.nodejs-quality-checks.result == 'success' || needs.go-quality-checks.result == 'success')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run performance benchmarks
+        run: |
+          # Add performance benchmark commands here
+          echo "Performance benchmarks would run here"
+          # This could include cold start time measurements, memory usage, etc.
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    needs: [validate-structure, nodejs-quality-checks, go-quality-checks, security-scan]
+    if: always()
+    steps:
+      - name: Check quality gate
+        run: |
+          if [[ "${{ needs.validate-structure.result }}" != "success" ]]; then
+            echo "❌ Structure validation failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.nodejs-quality-checks.result }}" == "failure" ]]; then
+            echo "❌ Node.js quality checks failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.go-quality-checks.result }}" == "failure" ]]; then
+            echo "❌ Go quality checks failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.security-scan.result }}" == "failure" ]]; then
+            echo "❌ Security scan failed"
+            exit 1
+          fi
+          
+          echo "✅ All quality checks passed"

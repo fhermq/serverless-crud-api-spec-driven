@@ -77,6 +77,72 @@ This project follows a multi-language serverless architecture with the following
    ./scripts/start-local-api.sh
    ```
 
+## Quality Assurance System
+
+This project enforces Lambda function best practices through multiple layers to ensure consistency and prevent missing critical checks:
+
+### 1. Best Practices Documentation
+- **[Lambda Best Practices Guide](.kiro/steering/lambda-best-practices.md)** - Comprehensive checklist for all functions
+- **Pull Request Template** - Automated checklist for code reviews  
+- **Function Templates** - Use `functions/get-item/` as reference implementation
+
+### 2. Automated Validation Tools
+```bash
+# Install pre-commit hooks (recommended)
+pip install pre-commit
+pre-commit install
+
+# Validate all function structures
+python3 scripts/validate-lambda-structure.py
+
+# Check specific function before committing
+./scripts/check-function.sh functions/get-item
+
+# Validate package.json files
+python3 scripts/validate-package-json.py
+```
+
+### 3. CI/CD Quality Gates
+- **Structure validation** - Ensures proper file organization and required files
+- **Code quality** - Linting, formatting, security scans for all functions
+- **Test coverage** - Minimum 80% coverage required across all functions
+- **Security scanning** - Vulnerability detection and hardcoded value checks
+- **Performance benchmarks** - Cold start and execution time monitoring
+
+### 4. Function Development Checklist
+Before committing any Lambda function, ensure:
+
+✅ **Structure**: Required files present (package.json/go.mod, main file, README.md, tests)  
+✅ **Dependencies**: Uses shared utilities and proper AWS SDK versions  
+✅ **Error Handling**: Comprehensive error handling with proper HTTP status codes  
+✅ **Logging**: Structured logging with request context and timing  
+✅ **Validation**: Input validation using shared utilities  
+✅ **Testing**: >80% test coverage with happy path, error, and edge cases  
+✅ **Security**: No hardcoded values, proper CORS, input sanitization  
+✅ **Documentation**: Complete README with setup and API documentation  
+
+### 5. Creating New Lambda Functions
+
+Follow this workflow to ensure best practices compliance:
+
+```bash
+# 1. Create function directory using template
+mkdir functions/new-function
+cd functions/new-function
+
+# 2. Copy structure from reference implementation
+cp -r ../get-item/* .
+# Modify files for your specific function
+
+# 3. Run quality check before committing
+cd ../..
+./scripts/check-function.sh functions/new-function
+
+# 4. Commit only after all checks pass
+git add functions/new-function
+git commit -m "feat: add new-function Lambda"
+```
+
 ## Development Workflow
 
 ### Language-Specific Development

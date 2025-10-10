@@ -1,0 +1,105 @@
+# Pre-commit hooks for Lambda function best practices
+# Install with: pip install pre-commit && pre-commit install
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: detect-private-key
+
+  # Node.js specific checks
+  - repo: local
+    hooks:
+      - id: eslint-nodejs
+        name: ESLint for Node.js Lambda functions
+        entry: bash -c 'for dir in functions/*/; do if [ -f "$dir/package.json" ] && grep -q "node" "$dir/package.json"; then cd "$dir" && npm run lint; cd ../..; fi; done'
+        language: system
+        files: '^functions/.*/.*\.(js|ts)$'
+        pass_filenames: false
+
+      - id: jest-nodejs
+        name: Jest tests for Node.js Lambda functions
+        entry: bash -c 'for dir in functions/*/; do if [ -f "$dir/package.json" ] && grep -q "node" "$dir/package.json"; then cd "$dir" && npm test; cd ../..; fi; done'
+        language: system
+        files: '^functions/.*/.*\.(js|ts)$'
+        pass_filenames: false
+
+  # Go specific checks
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: Go formatting
+        entry: bash -c 'for dir in functions/*/; do if [ -f "$dir/go.mod" ]; then cd "$dir" && gofmt -w .; cd ../..; fi; done'
+        language: system
+        files: '^functions/.*\.go$'
+        pass_filenames: false
+
+      - id: go-test
+        name: Go tests
+        entry: bash -c 'for dir in functions/*/; do if [ -f "$dir/go.mod" ]; then cd "$dir" && go test ./...; cd ../..; fi; done'
+        language: system
+        files: '^functions/.*\.go$'
+        pass_filenames: false
+
+      - id: go-vet
+        name: Go vet
+        entry: bash -c 'for dir in functions/*/; do if [ -f "$dir/go.mod" ]; then cd "$dir" && go vet ./...; cd ../..; fi; done'
+        language: system
+        files: '^functions/.*\.go$'
+        pass_filenames: false
+
+  # Security checks
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package-lock.json
+
+  # Lambda function specific checks
+  - repo: local
+    hooks:
+      - id: lambda-structure-check
+        name: Lambda function structure validation
+        entry: python3 scripts/validate-lambda-structure.py
+        language: system
+        files: '^functions/.*'
+        pass_filenames: false
+
+      - id: shared-utilities-check
+        name: Verify shared utilities usage
+        entry: bash -c 'grep -r "require.*@serverless-crud-api/shared" functions/ || echo "Warning: Some functions may not be using shared utilities"'
+        language: system
+        files: '^functions/.*\.(js|ts)$'
+        pass_filenames: false
+
+      - id: environment-variables-check
+        name: Check for hardcoded values
+        entry: bash -c 'if grep -r "hardcoded\|localhost\|127.0.0.1" functions/ --exclude-dir=node_modules --exclude="*.test.*"; then echo "Error: Hardcoded values found"; exit 1; fi'
+        language: system
+        files: '^functions/.*'
+        pass_filenames: false
+
+  # Documentation checks
+  - repo: local
+    hooks:
+      - id: readme-check
+        name: Ensure each function has README
+        entry: bash -c 'for dir in functions/*/; do if [ ! -f "$dir/README.md" ]; then echo "Missing README.md in $dir"; exit 1; fi; done'
+        language: system
+        files: '^functions/.*'
+        pass_filenames: false
+
+      - id: package-json-check
+        name: Validate package.json structure
+        entry: python3 scripts/validate-package-json.py
+        language: system
+        files: '^functions/.*/package\.json$'

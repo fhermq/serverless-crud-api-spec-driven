@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -41,10 +40,10 @@ type Item struct {
 
 // ErrorResponse represents an error response
 type ErrorResponse struct {
-	Error   string                 `json:"error"`
-	Message string                 `json:"message"`
-	Details []ValidationError      `json:"details,omitempty"`
-	RequestID string               `json:"requestId,omitempty"`
+	Error     string            `json:"error"`
+	Message   string            `json:"message"`
+	Details   []ValidationError `json:"details,omitempty"`
+	RequestID string            `json:"requestId,omitempty"`
 }
 
 // ValidationError represents a validation error
@@ -59,6 +58,7 @@ var (
 	dynamoClient *dynamodb.DynamoDB
 	tableName    string
 	validate     *validator.Validate
+	logger       *Logger
 )
 
 // Initialize DynamoDB client and validator
@@ -74,7 +74,7 @@ func init() {
 		Region: aws.String(os.Getenv("AWS_REGION")),
 	})
 	if err != nil {
-		log.Fatalf("Failed to create AWS session: %v", err)
+		panic(fmt.Sprintf("Failed to create AWS session: %v", err))
 	}
 
 	// Override endpoint for local development
@@ -87,14 +87,33 @@ func init() {
 
 	// Initialize validator
 	validate = validator.New()
+
+	// Initialize logger
+	functionName := os.Getenv("AWS_LAMBDA_FUNCTION_NAME")
+	if functionName == "" {
+		functionName = "create-item-function"
+	}
+
+	logger = NewLogger(LogContext{
+		FunctionName: functionName,
+		Operation:    "createItem",
+	}, getEnvLogLevel())
 }
 
 // HandleRequest handles the Lambda function request
 func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	// Generate request ID for tracing
 	requestID := generateRequestID()
-	
-	log.Printf("[%s] Received create item request", requestID)
+
+	// Create request-specific logger
+	requestLogger := logger.WithContext(LogContext{
+		RequestID: requestID,
+	})
+
+	requestLogger.Info("Create item request received", map[string]interface{}{
+		"httpMethod": request.HTTPMethod,
+		"resource":   request.Resource,
+	})
 
 	// Set CORS headers
 	headers := map[string]string{
@@ -116,13 +135,18 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 	// Parse and validate request body
 	var createReq CreateItemRequest
 	if err := json.Unmarshal([]byte(request.Body), &createReq); err != nil {
-		log.Printf("[%s] Failed to parse request body: %v", requestID, err)
+		requestLogger.Warn("Failed to parse request body", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return createErrorResponse(400, "Invalid JSON format", nil, requestID, headers), nil
 	}
 
 	// Validate request data
 	if validationErrors := validateCreateItemRequest(createReq); len(validationErrors) > 0 {
-		log.Printf("[%s] Validation failed: %d errors", requestID, len(validationErrors))
+		requestLogger.Warn("Validation failed", map[string]interface{}{
+			"errorCount": len(validationErrors),
+			"errors":     validationErrors,
+		})
 		return createErrorResponse(400, "Validation failed", validationErrors, requestID, headers), nil
 	}
 
@@ -130,20 +154,23 @@ func HandleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (
 	sanitizedReq := sanitizeCreateItemRequest(createReq)
 
 	// Create item in DynamoDB
-	item, err := createItemInDynamoDB(ctx, sanitizedReq, requestID)
+	item, err := createItemInDynamoDB(ctx, sanitizedReq, requestLogger)
 	if err != nil {
-		log.Printf("[%s] Failed to create item: %v", requestID, err)
+		requestLogger.Error("Failed to create item", err, nil)
 		return createErrorResponse(500, "Failed to create item", nil, requestID, headers), nil
 	}
 
 	// Return success response
 	responseBody, err := json.Marshal(item)
 	if err != nil {
-		log.Printf("[%s] Failed to marshal response: %v", requestID, err)
+		requestLogger.Error("Failed to marshal response", err, nil)
 		return createErrorResponse(500, "Internal server error", nil, requestID, headers), nil
 	}
 
-	log.Printf("[%s] Item created successfully: %s", requestID, item.ID)
+	requestLogger.Info("Item created successfully", map[string]interface{}{
+		"itemId":   item.ID,
+		"itemName": item.Name,
+	})
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: 201,
@@ -161,7 +188,7 @@ func validateCreateItemRequest(req CreateItemRequest) []ValidationError {
 		for _, err := range err.(validator.ValidationErrors) {
 			field := strings.ToLower(err.Field())
 			var message string
-			
+
 			switch err.Tag() {
 			case "required":
 				message = fmt.Sprintf("%s is required", field)
@@ -176,7 +203,7 @@ func validateCreateItemRequest(req CreateItemRequest) []ValidationError {
 			default:
 				message = fmt.Sprintf("%s is invalid", field)
 			}
-			
+
 			errors = append(errors, ValidationError{
 				Field:   field,
 				Message: message,
@@ -195,17 +222,17 @@ func sanitizeCreateItemRequest(req CreateItemRequest) CreateItemRequest {
 		Category: strings.TrimSpace(req.Category),
 		Price:    req.Price,
 	}
-	
+
 	if req.Description != nil {
 		desc := strings.TrimSpace(*req.Description)
 		sanitized.Description = &desc
 	}
-	
+
 	return sanitized
 }
 
 // createItemInDynamoDB creates an item in DynamoDB
-func createItemInDynamoDB(ctx context.Context, req CreateItemRequest, requestID string) (*Item, error) {
+func createItemInDynamoDB(ctx context.Context, req CreateItemRequest, logger *Logger) (*Item, error) {
 	// Generate UUID and timestamps
 	id := uuid.New().String()
 	timestamp := time.Now().UTC().Format(time.RFC3339)
@@ -220,6 +247,11 @@ func createItemInDynamoDB(ctx context.Context, req CreateItemRequest, requestID 
 		CreatedAt:   timestamp,
 		UpdatedAt:   timestamp,
 	}
+
+	logger.Info("Creating item in DynamoDB", map[string]interface{}{
+		"itemId":    id,
+		"tableName": tableName,
+	})
 
 	// Convert to DynamoDB attribute values
 	av, err := dynamodbattribute.MarshalMap(item)
@@ -238,20 +270,29 @@ func createItemInDynamoDB(ctx context.Context, req CreateItemRequest, requestID 
 	_, err = dynamoClient.PutItemWithContext(ctx, input)
 	duration := time.Since(startTime)
 
+	logger.LogDatabaseOperation("PutItem", tableName, map[string]interface{}{
+		"id": id,
+	}, duration)
+
 	if err != nil {
-		log.Printf("[%s] DynamoDB PutItem failed (duration: %v): %v", requestID, duration, err)
-		
+		logger.Error("DynamoDB PutItem failed", err, map[string]interface{}{
+			"tableName": tableName,
+			"duration":  duration.String(),
+		})
+
 		// Check for conditional check failed (duplicate ID)
 		if awsErr, ok := err.(awserr.Error); ok {
 			if awsErr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
 				return nil, fmt.Errorf("item with ID already exists")
 			}
 		}
-		
+
 		return nil, fmt.Errorf("failed to put item: %w", err)
 	}
 
-	log.Printf("[%s] DynamoDB PutItem succeeded (duration: %v)", requestID, duration)
+	logger.Info("DynamoDB PutItem succeeded", map[string]interface{}{
+		"duration": duration.String(),
+	})
 	return item, nil
 }
 
