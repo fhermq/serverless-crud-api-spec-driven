@@ -241,52 +241,299 @@ interface Item {
 
 ## DevOps Pipeline Design
 
+### OIDC Security Architecture
+
+**Authentication Flow**:
+```
+GitHub Actions Workflow
+       ↓
+OIDC Token Request to GitHub
+       ↓
+AWS STS AssumeRoleWithWebIdentity
+       ↓
+Temporary AWS Credentials (1 hour expiry)
+       ↓
+AWS Resource Access (Deployment)
+```
+
+**OIDC Configuration**:
+- **Identity Provider**: `https://token.actions.githubusercontent.com`
+- **Audience**: `sts.amazonaws.com`
+- **Trust Policy**: Repository and branch specific
+- **IAM Role**: Least privilege deployment permissions
+- **Credential Expiry**: Maximum 1 hour
+
 ### GitHub Actions Workflow
 
 ```yaml
-# Workflow stages
-1. Code Quality Checks
+# Workflow stages with OIDC Security
+1. OIDC Authentication
+   - Configure AWS credentials using OIDC
+   - Assume deployment role with temporary credentials
+   - Validate authentication success
+
+2. Code Quality Checks
    - Linting (language-specific)
    - Security scanning
    - Dependency vulnerability checks
 
-2. Unit Testing
+3. Unit Testing
    - Go: go test
    - Node.js: npm test
    - Coverage reporting
 
-3. Build & Package
+4. Build & Package
    - Go: Build binaries
    - Node.js: Install dependencies
    - Create deployment packages
 
-4. Infrastructure Deployment
-   - Deploy CloudFormation/SAM templates
+5. Infrastructure Deployment (Secure)
+   - Deploy CloudFormation/SAM templates using OIDC credentials
    - Update API Gateway configuration
-   - Deploy Lambda functions
+   - Deploy Lambda functions with temporary credentials
 
-5. Integration Testing
+6. Integration Testing
    - Run API tests against deployed environment
    - Validate database operations
    - Performance benchmarks
 
-6. Deployment Verification
+7. Deployment Verification
    - Health checks
    - Smoke tests
    - Rollback on failure
 ```
 
 ### Environment Strategy
-- **Development**: Feature branch deployments
-- **Staging**: Main branch deployments for testing
-- **Production**: Tagged releases with manual approval
+- **Development**: Feature branch deployments with OIDC
+- **Staging**: Main branch deployments for testing with OIDC
+- **Production**: Tagged releases with manual approval and OIDC
+
+### Complete IAM Role Architecture
+
+#### Role Types and Responsibilities
+
+**1. OIDC Deployment Role** (`GitHubActions-ServerlessCRUD-DeployRole`)
+- **Purpose**: Used by GitHub Actions for deployment
+- **Authentication**: OIDC temporary credentials (1 hour max)
+- **Permissions**: Infrastructure deployment, role creation, Lambda deployment
+- **Usage**: CI/CD pipeline only
+
+**2. Lambda Execution Roles** (Function-specific)
+- **CreateItemExecutionRole**: Runtime role for create-item function
+- **GetItemExecutionRole**: Runtime role for get-item function  
+- **UpdateItemExecutionRole**: Runtime role for update-item function
+- **DeleteItemExecutionRole**: Runtime role for delete-item function
+
+#### Role Assignment Flow
+```
+GitHub Actions (OIDC) → Deployment Role → Creates/Updates Lambda Functions → Assigns Execution Roles
+                                    ↓
+                            Lambda Functions at Runtime → Use Execution Roles → Access DynamoDB
+```
+
+### OIDC Implementation Details
+
+#### AWS Setup Requirements
+1. **OIDC Identity Provider Creation**:
+   - Provider URL: `https://token.actions.githubusercontent.com`
+   - Thumbprint: GitHub's certificate thumbprint
+   - Audience: `sts.amazonaws.com`
+
+2. **IAM Role Configuration**:
+   - Trust relationship with OIDC provider
+   - Repository-specific conditions
+   - Branch-specific restrictions
+   - Time-limited session duration (1 hour max)
+
+3. **Permission Boundaries**:
+   - CloudFormation stack operations
+   - Lambda function deployment
+   - API Gateway configuration
+   - DynamoDB table management
+   - S3 bucket access for artifacts
+
+#### GitHub Actions Configuration
+```yaml
+name: Deploy Serverless CRUD API
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read    # Required for checkout
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE_ARN }}
+          role-session-name: GitHubActions-ServerlessCRUD
+          aws-region: us-east-1
+          
+      - name: Verify OIDC authentication
+        run: aws sts get-caller-identity
+```
+
+#### Security Validation
+- **Pre-deployment Checks**: Validate OIDC token before deployment
+- **Credential Expiry**: Ensure credentials expire within 1 hour
+- **Access Logging**: Log all AWS API calls via CloudTrail
+- **Failure Handling**: Fail deployment if OIDC authentication fails
+- **Rollback Security**: Secure rollback procedures using OIDC
 
 ### Security Considerations
+
+#### Deployment Security (OIDC)
+- **No Long-lived Credentials**: Zero AWS access keys stored in GitHub
+- **OIDC Authentication**: OpenID Connect for secure AWS access
+- **Temporary Credentials**: 1-hour maximum credential lifetime
+- **Repository Restrictions**: Trust policy limited to specific repo/branch
+- **Least Privilege IAM**: Deployment role with minimal required permissions
+- **Audit Trail**: CloudTrail logging of all OIDC-based deployments
+
+#### Runtime Security
 - **API Authentication**: API Keys or JWT tokens
-- **Database Security**: IAM roles and policies
+- **Lambda Execution Roles**: Function-specific IAM roles for runtime operations
+- **Database Security**: IAM roles and policies for DynamoDB access
 - **Secrets Management**: AWS Secrets Manager for sensitive data
 - **Network Security**: VPC configuration if required
 - **Data Encryption**: Encryption in transit and at rest
+
+#### Lambda Execution Roles Design
+Each Lambda function will have its own execution role with minimal permissions:
+
+**Base Lambda Execution Role**:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:*"
+    }
+  ]
+}
+```
+
+**DynamoDB Access Policy (attached to each function role)**:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:*:*:table/Items",
+        "arn:aws:dynamodb:*:*:table/Items/index/*"
+      ]
+    }
+  ]
+}
+```
+
+**Function-Specific Roles**:
+- **CreateItemRole**: PutItem permissions only
+- **GetItemRole**: GetItem and Query permissions only  
+- **UpdateItemRole**: GetItem and UpdateItem permissions only
+- **DeleteItemRole**: GetItem and DeleteItem permissions only
+
+#### OIDC IAM Role Design
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::ACCOUNT:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:ORG/REPO:ref:refs/heads/main"
+        }
+      }
+    }
+  ]
+}
+```
+
+#### Deployment Permissions Policy (OIDC Role)
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:*",
+        "lambda:*",
+        "apigateway:*",
+        "dynamodb:*",
+        "iam:PassRole",
+        "iam:CreateRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:DeleteRole",
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": ["us-east-1", "us-west-2"]
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::*:role/ServerlessCRUD-*-ExecutionRole"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "lambda.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+```
+
+#### Role Separation Strategy
+1. **OIDC Deployment Role**: Used by GitHub Actions to deploy infrastructure
+   - Can create/update Lambda functions
+   - Can create/manage execution roles
+   - Can pass execution roles to Lambda functions
+   
+2. **Lambda Execution Roles**: Used by Lambda functions at runtime
+   - Function-specific permissions (least privilege)
+   - DynamoDB access based on operation type
+   - CloudWatch Logs access for monitoring
 
 ### Monitoring and Observability
 - **CloudWatch Logs**: Centralized logging

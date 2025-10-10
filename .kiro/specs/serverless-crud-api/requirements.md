@@ -81,3 +81,17 @@ This feature implements a serverless CRUD API using AWS Lambda functions, API Ga
 3. IF authorization fails THEN the system SHALL return a 403 status
 4. WHEN sensitive data is handled THEN the system SHALL encrypt data in transit and at rest
 5. WHEN database connections are made THEN the system SHALL use secure connection strings stored in AWS Secrets Manager
+
+### Requirement 7
+
+**User Story:** As a security engineer, I want the deployment pipeline to use OIDC authentication with AWS, so that no long-lived credentials or secrets are stored in GitHub repositories.
+
+#### Acceptance Criteria
+
+1. WHEN GitHub Actions deploys to AWS THEN the system SHALL use OpenID Connect (OIDC) for authentication
+2. WHEN OIDC is configured THEN the system SHALL NOT store any AWS access keys or secret keys in GitHub Secrets
+3. WHEN the deployment workflow runs THEN the system SHALL assume an AWS IAM role using temporary credentials
+4. IF OIDC authentication fails THEN the system SHALL prevent deployment and log the authentication error
+5. WHEN IAM roles are created THEN the system SHALL follow the principle of least privilege for deployment permissions
+6. WHEN OIDC trust relationships are established THEN the system SHALL restrict access to specific GitHub repositories and branches
+7. WHEN temporary credentials are issued THEN the system SHALL ensure they expire within 1 hour of issuance

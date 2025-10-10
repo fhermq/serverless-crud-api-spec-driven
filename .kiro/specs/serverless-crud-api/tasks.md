@@ -135,18 +135,37 @@
   - Configure error response formatting
   - _Requirements: 1.4, 4.3, 4.4_
 
-- [ ] 8. Implement security and authentication
-- [ ] 8.1 Set up API authentication
+- [ ] 8. Implement OIDC security and authentication
+- [ ] 8.1 Set up OIDC identity provider in AWS
+  - Create OIDC identity provider in AWS IAM console
+  - Configure provider URL (https://token.actions.githubusercontent.com) and audience (sts.amazonaws.com)
+  - Set up thumbprint for GitHub's certificate
+  - _Requirements: 7.1, 7.3, 7.6_
+
+- [ ] 8.2 Create OIDC deployment role and policies
+  - Create IAM role for GitHub Actions deployment with OIDC trust relationship
+  - Configure trust policy with repository and branch restrictions
+  - Attach deployment permissions policy with least privilege access
+  - Set maximum session duration to 1 hour
+  - _Requirements: 7.2, 7.5, 7.7_
+
+- [ ] 8.3 Create Lambda execution roles
+  - Create function-specific execution roles (CreateItemRole, GetItemRole, UpdateItemRole, DeleteItemRole)
+  - Configure least privilege DynamoDB permissions for each role
+  - Set up CloudWatch Logs permissions for all execution roles
+  - _Requirements: 6.1, 6.3, 5.5_
+
+- [ ] 8.4 Set up API authentication
   - Configure API Gateway with API key authentication
   - Set up usage plans and throttling limits
-  - Implement proper IAM roles for Lambda functions
+  - Configure CORS settings for secure web access
   - _Requirements: 6.1, 6.2, 6.3_
 
-- [ ] 8.2 Configure secure database access
-  - Set up IAM roles for DynamoDB access
+- [ ] 8.5 Configure secure database access
+  - Assign execution roles to Lambda functions in SAM template
   - Configure AWS Secrets Manager for sensitive configuration
   - Implement secure connection handling in Lambda functions
-  - _Requirements: 6.5, 5.5_
+  - _Requirements: 6.4, 6.5, 5.5_
 
 - [ ] 9. Set up comprehensive logging and monitoring
 - [ ] 9.1 Implement structured logging
@@ -161,40 +180,65 @@
   - Create CloudWatch dashboards for system monitoring
   - _Requirements: 4.4, 4.5_
 
-- [ ] 10. Create GitHub Actions CI/CD pipeline
-- [ ] 10.1 Set up multi-language build workflow
+- [ ] 10. Create secure GitHub Actions CI/CD pipeline with OIDC
+- [ ] 10.1 Configure OIDC authentication in GitHub Actions
+  - Set up GitHub Actions workflow with OIDC permissions (id-token: write)
+  - Configure aws-actions/configure-aws-credentials@v4 with role-to-assume
+  - Add OIDC authentication verification step
+  - Implement failure handling if OIDC authentication fails
+  - _Requirements: 7.1, 7.4, 3.1_
+
+- [ ] 10.2 Set up multi-language build workflow with security
   - Create GitHub Actions workflow for Go and Node.js builds
   - Configure language-specific testing and linting
+  - Add security scanning and dependency vulnerability checks
   - Set up artifact creation for Lambda deployment packages
-  - _Requirements: 3.2, 3.3, 3.7_
+  - _Requirements: 3.2, 3.3, 3.7, 7.2_
 
-- [ ] 10.2 Implement deployment pipeline
-  - Configure AWS credentials and deployment permissions
-  - Set up SAM build and deploy commands in GitHub Actions
+- [ ] 10.3 Implement secure deployment pipeline
+  - Configure deployment using OIDC temporary credentials (no stored AWS keys)
+  - Set up SAM build and deploy commands with OIDC authentication
   - Implement environment-specific deployments (dev/staging/prod)
-  - _Requirements: 3.1, 3.4, 5.4_
+  - Add deployment verification and rollback procedures
+  - _Requirements: 3.1, 3.4, 5.4, 7.1, 7.2_
 
-- [ ] 10.3 Add integration testing to pipeline
+- [ ] 10.4 Add integration testing to secure pipeline
   - Create API integration tests using automated HTTP requests
   - Set up database integration testing with test data
   - Configure post-deployment smoke tests and health checks
-  - _Requirements: 3.5, 3.6_
+  - Validate OIDC credential expiry and security compliance
+  - _Requirements: 3.5, 3.6, 7.7_
 
-- [ ] 11. Set up team collaboration and coordination tools
-- [ ] 11.1 Configure function-specific CI/CD pipelines
+- [ ] 11. Validate and test OIDC security implementation
+- [ ] 11.1 Test OIDC authentication flow
+  - Verify OIDC token generation and AWS STS role assumption
+  - Test deployment with temporary credentials and validate 1-hour expiry
+  - Verify that no AWS credentials are stored in GitHub Secrets
+  - Test failure scenarios when OIDC authentication fails
+  - _Requirements: 7.1, 7.2, 7.4, 7.7_
+
+- [ ] 11.2 Validate security compliance
+  - Audit IAM roles and policies for least privilege compliance
+  - Test repository and branch restrictions in OIDC trust policy
+  - Verify CloudTrail logging of OIDC-based deployments
+  - Validate that deployment fails without proper OIDC setup
+  - _Requirements: 7.3, 7.5, 7.6_
+
+- [ ] 12. Set up team collaboration and coordination tools
+- [ ] 12.1 Configure function-specific CI/CD pipelines
   - Create GitHub Actions workflows that trigger only on function-specific changes
   - Set up parallel deployment pipelines for independent function development
   - Configure branch protection rules and required reviews
   - _Requirements: 3.1, 3.4_
 
-- [ ] 11.2 Implement contract testing and validation
+- [ ] 12.2 Implement contract testing and validation
   - Set up Pact testing for consumer-driven contract testing
   - Create schema validation tests for API responses
   - Implement mock services for isolated function testing
   - Configure contract validation in CI pipeline
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 11.3 Create team documentation and coordination tools
+- [ ] 12.3 Create team documentation and coordination tools
   - Set up Architecture Decision Records (ADR) documentation
   - Create function-specific documentation templates
   - Set up automated API documentation generation from OpenAPI specs
