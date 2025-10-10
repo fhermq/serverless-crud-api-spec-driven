@@ -78,7 +78,6 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: '${{ matrix.function-dir }}/package-lock.json'
       
       - name: Install dependencies
         working-directory: ${{ matrix.function-dir }}
