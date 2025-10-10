@@ -462,3 +462,5 @@ async function publishCustomMetrics(operation, status, duration, requestId) {
         console.error('Failed to publish custom metrics:', error);
     }
 }
+
+//Just a comment to try integration validation
