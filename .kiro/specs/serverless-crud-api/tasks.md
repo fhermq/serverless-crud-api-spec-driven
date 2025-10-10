@@ -96,20 +96,20 @@
   - _Requirements: 2.3, 4.1_
 
 - [ ] 6. Implement Delete Item Lambda function (Go)
-- [ ] 6.1 Set up Go delete function structure
+- [x] 6.1 Set up Go delete function structure
   - Create Go Lambda function for delete operations
   - Configure DynamoDB client for delete operations
   - Set up proper error handling and logging
   - _Requirements: 1.5, 2.4, 5.5_
 
-- [ ] 6.2 Implement delete item business logic
+- [x] 6.2 Implement delete item business logic
   - Extract item ID from path parameters
   - Implement DynamoDB DeleteItem operation
   - Return 204 No Content for successful deletions
   - Handle item not found scenarios appropriately
   - _Requirements: 2.4, 4.1, 4.2_
 
-- [ ] 6.3 Write unit tests for delete item function
+- [x] 6.3 Write unit tests for delete item function
   - Test successful item deletion
   - Test item not found during deletion
   - Test DynamoDB error scenarios

@@ -5,17 +5,17 @@ Lambda function written in Go that handles DELETE requests to remove items from 
 
 ## Language Choice
 Go was selected for this function due to its:
+- Fast execution and minimal cold start times
 - Minimal resource usage for simple operations
-- Fast execution times
-- Excellent performance for straightforward delete operations
-- Low memory footprint
+- Excellent performance for delete operations
 
 ## Responsibilities
-- Extract item ID from API Gateway path parameters
-- Delete item from DynamoDB using DeleteItem operation
+- Extract item ID from path parameters
+- Validate UUID format
+- Check if item exists before deletion
+- Delete item from DynamoDB
 - Return 204 No Content for successful deletions
 - Handle item not found scenarios appropriately
-- Provide proper error handling and logging
 
 ## Local Development
 
@@ -33,7 +33,7 @@ go mod tidy
 go test ./...
 
 # Build function
-go build -o main main.go
+go build -o main main.go logger.go
 
 # Test with SAM CLI
 sam local invoke DeleteItemFunction -e test-event.json
@@ -51,9 +51,15 @@ go test -cover
 ## Environment Variables
 - `DYNAMODB_TABLE_NAME` - Name of the DynamoDB table
 - `AWS_REGION` - AWS region for DynamoDB operations
+- `LOG_LEVEL` - Logging level (DEBUG, INFO, WARN, ERROR)
 
 ## API Contract
 - **Method**: DELETE
 - **Path**: /items/{id}
-- **Path Parameters**: id (UUID of the item)
-- **Response**: 204 No Content for successful deletion or error with appropriate status code
+- **Path Parameters**: id (UUID format)
+- **Response**: 204 No Content for successful deletion, or error with appropriate status code
+
+## Error Handling
+- **400 Bad Request**: Missing or invalid item ID format
+- **404 Not Found**: Item does not exist
+- **500 Internal Server Error**: Database or server errors
