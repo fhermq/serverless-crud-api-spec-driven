@@ -22,34 +22,34 @@
   - Create function-specific README templates
   - _Requirements: 1.4, 2.5, 4.3_
 
-- [ ] 2. Implement DynamoDB data layer
-- [ ] 2.1 Create DynamoDB table configuration
+- [x] 2. Implement DynamoDB data layer
+- [x] 2.1 Create DynamoDB table configuration
   - Define table schema in SAM template with partition key and attributes
   - Configure Global Secondary Index for category-based queries
   - Set up local DynamoDB for development testing
   - _Requirements: 2.1, 2.2, 5.2_
 
-- [ ] 2.2 Create shared data models and validation utilities
+- [x] 2.2 Create shared data models and validation utilities
   - Write TypeScript interfaces for Item model
   - Implement validation functions for item data
   - Create error response models and utilities
   - _Requirements: 2.5, 4.3, 6.4_
 
-- [ ] 3. Implement Create Item Lambda function (Go)
-- [ ] 3.1 Set up Go Lambda function structure
+- [x] 3. Implement Create Item Lambda function (Go)
+- [x] 3.1 Set up Go Lambda function structure
   - Initialize Go module and dependencies
   - Create handler function with proper AWS Lambda signature
   - Set up DynamoDB client and connection utilities
   - _Requirements: 1.5, 2.1, 5.5_
 
-- [ ] 3.2 Implement create item business logic
+- [x] 3.2 Implement create item business logic
   - Add input validation for create item requests
   - Generate UUID for new items and set timestamps
   - Implement DynamoDB PutItem operation with error handling
   - Return created item with proper HTTP status codes
   - _Requirements: 2.1, 4.1, 4.2_
 
-- [ ] 3.3 Write unit tests for create item function
+- [x] 3.3 Write unit tests for create item function
   - Test successful item creation scenarios
   - Test validation error handling
   - Test DynamoDB error scenarios
