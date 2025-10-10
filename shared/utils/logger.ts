@@ -84,11 +84,23 @@ export class Logger {
   setLogLevel(level: LogLevel): void {
     this.logLevel = level;
   }
+
+  // Database operation logging helper
+  logDatabaseOperation(operation: string, table: string, key?: any, duration?: number): void {
+    this.debug(`DynamoDB ${operation}`, {
+      type: 'database',
+      operation,
+      table,
+      ...(key && { key }),
+      ...(duration && { duration: `${duration}ms` })
+    });
+  }
 }
 
 // Default logger instance
+const functionName = process.env.AWS_LAMBDA_FUNCTION_NAME;
 export const logger = new Logger({
-  functionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
+  ...(functionName && { functionName }),
 }, process.env.LOG_LEVEL as LogLevel || LogLevel.INFO);
 
 // Helper function to create a logger with request context

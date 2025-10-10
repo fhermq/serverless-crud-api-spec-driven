@@ -30,8 +30,12 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
     this.statusCode = statusCode;
-    this.details = details;
-    this.requestId = requestId;
+    if (details !== undefined) {
+      this.details = details;
+    }
+    if (requestId !== undefined) {
+      this.requestId = requestId;
+    }
   }
 }
 

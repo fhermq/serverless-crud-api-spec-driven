@@ -3,7 +3,7 @@
  */
 
 import { Item, CreateItemRequest, UpdateItemRequest } from '../models/item';
-import { ErrorResponse } from '../models/error';
+import { ErrorResponse as ErrorResponseModel } from '../models/error';
 
 // API Gateway event types
 export interface APIGatewayEvent {
@@ -37,7 +37,7 @@ export namespace ItemAPI {
   export namespace CreateItem {
     export type RequestBody = CreateItemRequest;
     export type SuccessResponse = Item;
-    export type ErrorResponse = ErrorResponse;
+    export type ErrorResponse = ErrorResponseModel;
     export const METHOD = 'POST';
     export const PATH = '/items';
   }
@@ -48,7 +48,7 @@ export namespace ItemAPI {
       id: string;
     }
     export type SuccessResponse = Item;
-    export type ErrorResponse = ErrorResponse;
+    export type ErrorResponse = ErrorResponseModel;
     export const METHOD = 'GET';
     export const PATH = '/items/{id}';
   }
@@ -60,7 +60,7 @@ export namespace ItemAPI {
     }
     export type RequestBody = UpdateItemRequest;
     export type SuccessResponse = Item;
-    export type ErrorResponse = ErrorResponse;
+    export type ErrorResponse = ErrorResponseModel;
     export const METHOD = 'PUT';
     export const PATH = '/items/{id}';
   }
@@ -71,7 +71,7 @@ export namespace ItemAPI {
       id: string;
     }
     export type SuccessResponse = void; // 204 No Content
-    export type ErrorResponse = ErrorResponse;
+    export type ErrorResponse = ErrorResponseModel;
     export const METHOD = 'DELETE';
     export const PATH = '/items/{id}';
   }
@@ -117,3 +117,6 @@ export interface UpdateItemInput {
   category?: string;
   price?: number;
 }
+
+// Re-export Item from models for convenience
+export { Item } from '../models/item';
