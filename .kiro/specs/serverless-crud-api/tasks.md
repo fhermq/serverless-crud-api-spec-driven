@@ -53,8 +53,9 @@
   - Test successful item creation scenarios
   - Test validation error handling
   - Test DynamoDB error scenarios
-  - _Requirements: 2.1, 4.1_- [ ] 
-4. Implement Get Item Lambda function (Node.js)
+  - _Requirements: 2.1, 4.1_
+
+- [ ] 4. Implement Get Item Lambda function (Node.js)
 - [ ] 4.1 Set up Node.js Lambda function structure
   - Initialize npm project with AWS SDK dependencies
   - Create handler function with proper event handling
@@ -92,8 +93,9 @@
   - Test successful item updates
   - Test item not found during update
   - Test validation error scenarios
-  - _Requirements: 2.3, 4.1_- [ 
-] 6. Implement Delete Item Lambda function (Go)
+  - _Requirements: 2.3, 4.1_
+
+- [ ] 6. Implement Delete Item Lambda function (Go)
 - [ ] 6.1 Set up Go delete function structure
   - Create Go Lambda function for delete operations
   - Configure DynamoDB client for delete operations
@@ -131,8 +133,9 @@
   - Configure request validation and transformation
   - Set up proper HTTP status code mapping
   - Configure error response formatting
-  - _Requirements: 1.4, 4.3, 4.4_- [ 
-] 8. Implement security and authentication
+  - _Requirements: 1.4, 4.3, 4.4_
+
+- [ ] 8. Implement security and authentication
 - [ ] 8.1 Set up API authentication
   - Configure API Gateway with API key authentication
   - Set up usage plans and throttling limits
