@@ -75,21 +75,21 @@
   - Test DynamoDB error handling
   - _Requirements: 2.2, 4.1_
 
-- [ ] 5. Implement Update Item Lambda function (Node.js)
-- [ ] 5.1 Set up Node.js update function structure
+- [x] 5. Implement Update Item Lambda function (Node.js)
+- [x] 5.1 Set up Node.js update function structure
   - Create separate Lambda function for update operations
   - Configure DynamoDB UpdateItem capabilities
   - Set up input validation for update requests
   - _Requirements: 1.5, 2.3, 5.5_
 
-- [ ] 5.2 Implement update item business logic
+- [x] 5.2 Implement update item business logic
   - Validate update request data and item existence
   - Implement conditional DynamoDB UpdateItem operation
   - Update timestamp and return updated item
   - Handle validation and not found errors appropriately
   - _Requirements: 2.3, 4.1, 4.2_
 
-- [ ] 5.3 Write unit tests for update item function
+- [x] 5.3 Write unit tests for update item function
   - Test successful item updates
   - Test item not found during update
   - Test validation error scenarios
