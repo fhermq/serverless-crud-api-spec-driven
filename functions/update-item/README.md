@@ -10,6 +10,19 @@ This Lambda function handles updating existing items in the DynamoDB table via H
 - **Endpoint**: `/items/{id}`
 - **Database**: DynamoDB UpdateItem operation
 
+## Responsibilities
+
+This Lambda function is responsible for:
+
+- **Item Updates**: Updating existing items in the DynamoDB table with partial or complete field updates
+- **Input Validation**: Validating item ID format (UUID v4) and request body data according to business rules
+- **Conditional Operations**: Ensuring items exist before updating using DynamoDB conditional expressions
+- **Data Integrity**: Maintaining data consistency with automatic timestamp updates and field validation
+- **Error Handling**: Providing appropriate HTTP responses for validation errors, not found scenarios, and system failures
+- **Security**: Implementing input sanitization, security headers, and preventing injection attacks
+- **Monitoring**: Logging structured events and publishing custom CloudWatch metrics for observability
+- **Resilience**: Circuit breaker pattern implementation to prevent cascading failures during high error rates
+
 ## Features
 
 - ✅ Input validation and sanitization
