@@ -168,24 +168,52 @@ enable_auth() {
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     INFRASTRUCTURE_DIR="$(dirname "$SCRIPT_DIR")"
     
-    # Update stack with API key authentication enabled
-    PARAMETERS="ParameterKey=FoundationStackName,ParameterValue=${PROJECT_NAME}-${STAGE}-foundation ParameterKey=EnableApiKeyAuth,ParameterValue=true"
+    print_status "Using SAM to update the stack with API key authentication..."
     
+    # Navigate to infrastructure directory
+    cd "$INFRASTRUCTURE_DIR"
+    
+    # Build Go functions
+    print_status "Building Go functions..."
+    cd ../functions/create-item
+    go mod tidy
+    GOOS=linux GOARCH=amd64 go build -o bootstrap main.go logger.go
+    cd ../delete-item
+    go mod tidy
+    GOOS=linux GOARCH=amd64 go build -o bootstrap main.go logger.go
+
+    # Install Node.js dependencies
+    print_status "Installing Node.js dependencies..."
+    cd ../get-item
+    npm install --production --silent
+    cd ../update-item
+    npm install --production --silent
+
+    # Return to infrastructure directory
+    cd ../../infrastructure
+    
+    # Build the stack with SAM
+    print_status "Building API and Functions stack with SAM..."
+    sam build --template-file stacks/02-api-and-functions.yaml
+    
+    # Prepare parameter overrides
+    PARAMETERS="FoundationStackName=${PROJECT_NAME}-${STAGE}-foundation EnableApiKeyAuth=true"
     if [[ -n "$API_KEY_NAME" ]]; then
-        PARAMETERS="$PARAMETERS ParameterKey=ApiKeyName,ParameterValue=$API_KEY_NAME"
+        PARAMETERS="$PARAMETERS ApiKeyName=$API_KEY_NAME"
     fi
     
-    aws cloudformation update-stack \
+    # Deploy with SAM
+    print_status "Deploying stack update with API key authentication..."
+    sam deploy \
+        --template-file .aws-sam/build/template.yaml \
         --stack-name "$API_STACK_NAME" \
-        --template-body "file://${INFRASTRUCTURE_DIR}/stacks/02-api-and-functions.yaml" \
-        --parameters $PARAMETERS \
-        --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
-        --region "$REGION"
-    
-    print_status "Waiting for stack update to complete..."
-    aws cloudformation wait stack-update-complete \
-        --stack-name "$API_STACK_NAME" \
-        --region "$REGION"
+        --region "$REGION" \
+        --capabilities CAPABILITY_IAM \
+        --parameter-overrides \
+            $PARAMETERS \
+        --resolve-s3 \
+        --no-confirm-changeset \
+        --no-fail-on-empty-changeset
     
     print_success "API key authentication enabled successfully"
     
@@ -208,20 +236,47 @@ disable_auth() {
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     INFRASTRUCTURE_DIR="$(dirname "$SCRIPT_DIR")"
     
-    # Update stack with API key authentication disabled
-    aws cloudformation update-stack \
-        --stack-name "$API_STACK_NAME" \
-        --template-body "file://${INFRASTRUCTURE_DIR}/stacks/02-api-and-functions.yaml" \
-        --parameters \
-            ParameterKey=FoundationStackName,ParameterValue="${PROJECT_NAME}-${STAGE}-foundation" \
-            ParameterKey=EnableApiKeyAuth,ParameterValue=false \
-        --capabilities CAPABILITY_IAM \
-        --region "$REGION"
+    print_status "Using SAM to update the stack to disable API key authentication..."
     
-    print_status "Waiting for stack update to complete..."
-    aws cloudformation wait stack-update-complete \
+    # Navigate to infrastructure directory
+    cd "$INFRASTRUCTURE_DIR"
+    
+    # Build Go functions
+    print_status "Building Go functions..."
+    cd ../functions/create-item
+    go mod tidy
+    GOOS=linux GOARCH=amd64 go build -o bootstrap main.go logger.go
+    cd ../delete-item
+    go mod tidy
+    GOOS=linux GOARCH=amd64 go build -o bootstrap main.go logger.go
+
+    # Install Node.js dependencies
+    print_status "Installing Node.js dependencies..."
+    cd ../get-item
+    npm install --production --silent
+    cd ../update-item
+    npm install --production --silent
+
+    # Return to infrastructure directory
+    cd ../../infrastructure
+    
+    # Build the stack with SAM
+    print_status "Building API and Functions stack with SAM..."
+    sam build --template-file stacks/02-api-and-functions.yaml
+    
+    # Deploy with SAM (API key disabled)
+    print_status "Deploying stack update to disable API key authentication..."
+    sam deploy \
+        --template-file .aws-sam/build/template.yaml \
         --stack-name "$API_STACK_NAME" \
-        --region "$REGION"
+        --region "$REGION" \
+        --capabilities CAPABILITY_IAM \
+        --parameter-overrides \
+            "FoundationStackName=${PROJECT_NAME}-${STAGE}-foundation" \
+            "EnableApiKeyAuth=false" \
+        --resolve-s3 \
+        --no-confirm-changeset \
+        --no-fail-on-empty-changeset
     
     print_success "API key authentication disabled successfully"
     print_warning "The API is now publicly accessible without authentication"

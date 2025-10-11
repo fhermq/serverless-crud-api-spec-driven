@@ -214,42 +214,8 @@ Resources:
         - Key: Component
           Value: Monitoring
 
-  # Log Groups for Lambda Functions (if not auto-created)
-  CreateItemLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub 
-        - '/aws/lambda/${FunctionName}'
-        - FunctionName:
-            Fn::ImportValue: !Sub '${ApiStackName}-CreateItemFunctionName'
-      RetentionInDays: 14
-      Tags:
-        - Key: Project
-          Value: 
-            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
-        - Key: Stage
-          Value:
-            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
-        - Key: Component
-          Value: Monitoring
-
-  GetItemLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub 
-        - '/aws/lambda/${FunctionName}'
-        - FunctionName:
-            Fn::ImportValue: !Sub '${ApiStackName}-GetItemFunctionName'
-      RetentionInDays: 14
-      Tags:
-        - Key: Project
-          Value: 
-            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
-        - Key: Stage
-          Value:
-            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
-        - Key: Component
-          Value: Monitoring
+  # Note: Log Groups are auto-created by Lambda functions
+  # We don't need to create them here as they already exist
 
 Outputs:
   # Dashboard Information

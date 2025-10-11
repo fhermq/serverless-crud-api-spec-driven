@@ -7,6 +7,8 @@ set -e
 STAGE="dev"
 REGION="us-east-1"
 PROJECT_NAME="serverless-crud-api"
+ENABLE_API_KEY="false"
+API_KEY_NAME=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -23,12 +25,22 @@ while [[ $# -gt 0 ]]; do
       PROJECT_NAME="$2"
       shift 2
       ;;
+    --enable-api-key)
+      ENABLE_API_KEY="true"
+      shift 1
+      ;;
+    --api-key-name)
+      API_KEY_NAME="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
       echo "Options:"
       echo "  -s, --stage STAGE        Deployment stage (dev, staging, prod) [default: dev]"
       echo "  -r, --region REGION      AWS region [default: us-east-1]"
       echo "  -p, --project-name NAME  Project name [default: serverless-crud-api]"
+      echo "  --enable-api-key         Enable API key authentication [default: false]"
+      echo "  --api-key-name NAME      Custom API key name (optional)"
       echo "  -h, --help               Show this help message"
       exit 0
       ;;
@@ -83,13 +95,20 @@ echo "🔨 Building API and Functions stack..."
 sam build --template-file stacks/02-api-and-functions.yaml
 
 echo "🚀 Deploying API and Functions stack..."
+# Prepare parameter overrides
+PARAMETERS="FoundationStackName=$FOUNDATION_STACK EnableApiKeyAuth=$ENABLE_API_KEY"
+if [[ -n "$API_KEY_NAME" ]]; then
+  PARAMETERS="$PARAMETERS ApiKeyName=$API_KEY_NAME"
+fi
+
 sam deploy \
   --template-file .aws-sam/build/template.yaml \
   --stack-name "$STACK_NAME" \
   --region "$REGION" \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides \
-    "FoundationStackName=$FOUNDATION_STACK" \
+    $PARAMETERS \
+  --resolve-s3 \
   --no-confirm-changeset \
   --no-fail-on-empty-changeset \
   --tags \

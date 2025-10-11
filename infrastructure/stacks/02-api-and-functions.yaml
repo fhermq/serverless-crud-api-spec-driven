@@ -233,6 +233,8 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items
             Method: POST
+            Auth:
+              ApiKeyRequired: !If [EnableApiKey, true, false]
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -260,6 +262,8 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: GET
+            Auth:
+              ApiKeyRequired: !If [EnableApiKey, true, false]
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -287,6 +291,8 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: PUT
+            Auth:
+              ApiKeyRequired: !If [EnableApiKey, true, false]
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -325,6 +331,10 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: DELETE
+            Auth:
+              ApiKeyRequired: !If [EnableApiKey, true, false]
+            Auth:
+              ApiKeyRequired: !If [EnableApiKey, true, false]
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:

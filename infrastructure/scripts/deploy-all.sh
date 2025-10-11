@@ -68,7 +68,7 @@ fi
 cd "$(dirname "$0")"
 
 # Make scripts executable
-chmod +x deploy-foundation.sh deploy-api.sh deploy-functions.sh deploy-monitoring.sh
+chmod +x deploy-foundation.sh deploy-api-and-functions.sh deploy-monitoring.sh
 
 echo "📋 Deployment Plan:"
 echo "1. Foundation Stack (DynamoDB, IAM roles)"
