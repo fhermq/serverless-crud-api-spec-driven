@@ -1,0 +1,280 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Monitoring stack - CloudWatch dashboards, alarms, and X-Ray configuration for Serverless CRUD API
+
+Parameters:
+  FoundationStackName:
+    Type: String
+    Description: Name of the foundation stack to import values from
+    Default: serverless-crud-api-dev-foundation
+  
+  ApiStackName:
+    Type: String
+    Description: Name of the API and functions stack to import values from
+    Default: serverless-crud-api-dev-api
+
+Resources:
+  # CloudWatch Dashboard
+  ApiDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 
+        - '${ProjectName}-${Stage}-api-dashboard'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      DashboardBody: !Sub
+        - |
+          {
+            "widgets": [
+              {
+                "type": "metric",
+                "x": 0,
+                "y": 0,
+                "width": 12,
+                "height": 6,
+                "properties": {
+                  "metrics": [
+                    [ "AWS/ApiGateway", "Count", "ApiName", "${ProjectName}-${Stage}" ],
+                    [ ".", "Latency", ".", "." ],
+                    [ ".", "4XXError", ".", "." ],
+                    [ ".", "5XXError", ".", "." ]
+                  ],
+                  "view": "timeSeries",
+                  "stacked": false,
+                  "region": "${AWS::Region}",
+                  "title": "API Gateway Metrics",
+                  "period": 300
+                }
+              },
+              {
+                "type": "metric",
+                "x": 0,
+                "y": 6,
+                "width": 12,
+                "height": 6,
+                "properties": {
+                  "metrics": [
+                    [ "AWS/Lambda", "Invocations", "FunctionName", "${CreateItemFunctionName}" ],
+                    [ ".", "Duration", ".", "." ],
+                    [ ".", "Errors", ".", "." ],
+                    [ ".", "Throttles", ".", "." ]
+                  ],
+                  "view": "timeSeries",
+                  "stacked": false,
+                  "region": "${AWS::Region}",
+                  "title": "Create Item Function Metrics",
+                  "period": 300
+                }
+              },
+              {
+                "type": "metric",
+                "x": 0,
+                "y": 12,
+                "width": 12,
+                "height": 6,
+                "properties": {
+                  "metrics": [
+                    [ "AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "${ItemsTableName}" ],
+                    [ ".", "ConsumedWriteCapacityUnits", ".", "." ],
+                    [ ".", "ThrottledRequests", ".", "." ]
+                  ],
+                  "view": "timeSeries",
+                  "stacked": false,
+                  "region": "${AWS::Region}",
+                  "title": "DynamoDB Metrics",
+                  "period": 300
+                }
+              }
+            ]
+          }
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+          CreateItemFunctionName:
+            Fn::ImportValue: !Sub '${ApiStackName}-CreateItemFunctionName'
+          ItemsTableName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ItemsTableName'
+
+  # High Error Rate Alarm for API Gateway
+  ApiHighErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 
+        - '${ProjectName}-${Stage}-api-high-error-rate'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      AlarmDescription: 'API Gateway error rate is too high'
+      MetricName: 4XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub 
+            - '${ProjectName}-${Stage}'
+            - ProjectName:
+                Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+              Stage:
+                Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+
+  # Lambda Function Error Alarms
+  CreateItemFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 
+        - '${ProjectName}-${Stage}-create-item-errors'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      AlarmDescription: 'Create Item function error rate is too high'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value:
+            Fn::ImportValue: !Sub '${ApiStackName}-CreateItemFunctionName'
+
+  GetItemFunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 
+        - '${ProjectName}-${Stage}-get-item-errors'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      AlarmDescription: 'Get Item function error rate is too high'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value:
+            Fn::ImportValue: !Sub '${ApiStackName}-GetItemFunctionName'
+
+  # DynamoDB Throttling Alarm
+  DynamoDBThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 
+        - '${ProjectName}-${Stage}-dynamodb-throttling'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      AlarmDescription: 'DynamoDB requests are being throttled'
+      MetricName: ThrottledRequests
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: TableName
+          Value:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ItemsTableName'
+
+  # SNS Topic for Alerts (Optional)
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 
+        - '${ProjectName}-${Stage}-alerts'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      DisplayName: 'Serverless CRUD API Alerts'
+      Tags:
+        - Key: Project
+          Value: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+        - Key: Stage
+          Value:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+        - Key: Component
+          Value: Monitoring
+
+  # Log Groups for Lambda Functions (if not auto-created)
+  CreateItemLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub 
+        - '/aws/lambda/${FunctionName}'
+        - FunctionName:
+            Fn::ImportValue: !Sub '${ApiStackName}-CreateItemFunctionName'
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+        - Key: Stage
+          Value:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+        - Key: Component
+          Value: Monitoring
+
+  GetItemLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub 
+        - '/aws/lambda/${FunctionName}'
+        - FunctionName:
+            Fn::ImportValue: !Sub '${ApiStackName}-GetItemFunctionName'
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+        - Key: Stage
+          Value:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+        - Key: Component
+          Value: Monitoring
+
+Outputs:
+  # Dashboard Information
+  DashboardUrl:
+    Description: CloudWatch Dashboard URL
+    Value: !Sub 
+      - 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${DashboardName}'
+      - DashboardName: !Ref ApiDashboard
+
+  # SNS Topic for Alerts
+  AlertsTopicArn:
+    Description: SNS Topic ARN for alerts
+    Value: !Ref AlertsTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-AlertsTopicArn'
+
+  # Alarm Names
+  ApiErrorAlarmName:
+    Description: API Gateway error alarm name
+    Value: !Ref ApiHighErrorRateAlarm
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiErrorAlarmName'
+
+  CreateItemErrorAlarmName:
+    Description: Create Item function error alarm name
+    Value: !Ref CreateItemFunctionErrorAlarm
+    Export:
+      Name: !Sub '${AWS::StackName}-CreateItemErrorAlarmName'

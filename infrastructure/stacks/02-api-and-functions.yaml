@@ -1,0 +1,314 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: API Gateway and Lambda functions stack - Combined API and compute layer for Serverless CRUD API
+
+Parameters:
+  FoundationStackName:
+    Type: String
+    Description: Name of the foundation stack to import values from
+    Default: serverless-crud-api-dev-foundation
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: nodejs20.x
+    Environment:
+      Variables:
+        DYNAMODB_TABLE_NAME: 
+          Fn::ImportValue: !Sub '${FoundationStackName}-ItemsTableName'
+        STAGE: 
+          Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+        LOG_LEVEL: INFO
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+    Tracing: Active
+    Tags:
+      Project: 
+        Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+      Stage:
+        Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      Component: API
+
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+      AllowOrigin: "'*'"
+      AllowCredentials: false
+    TracingEnabled: true
+    MethodSettings:
+      - ResourcePath: '/*'
+        HttpMethod: '*'
+        LoggingLevel: INFO
+        DataTraceEnabled: true
+        MetricsEnabled: true
+        ThrottlingRateLimit: 100
+        ThrottlingBurstLimit: 200
+
+Resources:
+  # CloudWatch Log Group for API Gateway Access Logs
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub 
+        - '/aws/apigateway/${ProjectName}-${Stage}'
+        - ProjectName: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      RetentionInDays: 14
+      Tags:
+        - Key: Project
+          Value: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+        - Key: Stage
+          Value:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+        - Key: Component
+          Value: API
+
+  # API Gateway
+  ItemsApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: 
+        Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      OpenApiVersion: 3.0.1
+      Description: !Sub 
+        - 'Serverless CRUD API - ${Stage}'
+        - Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      EndpointConfiguration:
+        Type: REGIONAL
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: >
+          {
+            "requestId": "$context.requestId",
+            "requestTime": "$context.requestTime",
+            "httpMethod": "$context.httpMethod",
+            "resourcePath": "$context.resourcePath",
+            "status": "$context.status",
+            "responseLength": "$context.responseLength",
+            "responseTime": "$context.responseTime",
+            "userAgent": "$context.identity.userAgent",
+            "sourceIp": "$context.identity.sourceIp"
+          }
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+      Tags:
+        Project: 
+          Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+        Stage:
+          Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+        Component: API
+
+  # Create Item Function (Go)
+  CreateItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 
+        - '${ProjectName}-${Stage}-create-item'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      CodeUri: ../../functions/create-item/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures:
+        - x86_64
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-ItemsTableName'
+          STAGE: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+          LOG_LEVEL: INFO
+      Events:
+        CreateItem:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ItemsApi
+            Path: /items
+            Method: POST
+      Role:
+        Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
+      Tags:
+        Language: Go
+
+  # Get Item Function (Node.js)
+  GetItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 
+        - '${ProjectName}-${Stage}-get-item'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      CodeUri: ../../functions/get-item/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - x86_64
+      Events:
+        GetItem:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ItemsApi
+            Path: /items/{id}
+            Method: GET
+      Role:
+        Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
+      Tags:
+        Language: NodeJS
+
+  # Update Item Function (Node.js)
+  UpdateItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 
+        - '${ProjectName}-${Stage}-update-item'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      CodeUri: ../../functions/update-item/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Architectures:
+        - x86_64
+      Events:
+        UpdateItem:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ItemsApi
+            Path: /items/{id}
+            Method: PUT
+      Role:
+        Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
+      Tags:
+        Language: NodeJS
+
+  # Delete Item Function (Go)
+  DeleteItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 
+        - '${ProjectName}-${Stage}-delete-item'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      CodeUri: ../../functions/delete-item/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures:
+        - x86_64
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-ItemsTableName'
+          STAGE: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+          LOG_LEVEL: INFO
+      Events:
+        DeleteItem:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ItemsApi
+            Path: /items/{id}
+            Method: DELETE
+      Role:
+        Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
+      Tags:
+        Language: Go
+
+Outputs:
+  # API Gateway Information
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub 
+      - 'https://${ApiId}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'
+      - ApiId: !Ref ItemsApi
+        Stage:
+          Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiUrl'
+
+  ApiId:
+    Description: API Gateway ID
+    Value: !Ref ItemsApi
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiId'
+
+  # Lambda Function ARNs
+  CreateItemFunctionArn:
+    Description: Create Item Lambda Function ARN
+    Value: !GetAtt CreateItemFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-CreateItemFunctionArn'
+
+  GetItemFunctionArn:
+    Description: Get Item Lambda Function ARN
+    Value: !GetAtt GetItemFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GetItemFunctionArn'
+
+  UpdateItemFunctionArn:
+    Description: Update Item Lambda Function ARN
+    Value: !GetAtt UpdateItemFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-UpdateItemFunctionArn'
+
+  DeleteItemFunctionArn:
+    Description: Delete Item Lambda Function ARN
+    Value: !GetAtt DeleteItemFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-DeleteItemFunctionArn'
+
+  # Lambda Function Names
+  CreateItemFunctionName:
+    Description: Create Item Lambda Function Name
+    Value: !Ref CreateItemFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-CreateItemFunctionName'
+
+  GetItemFunctionName:
+    Description: Get Item Lambda Function Name
+    Value: !Ref GetItemFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-GetItemFunctionName'
+
+  UpdateItemFunctionName:
+    Description: Update Item Lambda Function Name
+    Value: !Ref UpdateItemFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-UpdateItemFunctionName'
+
+  DeleteItemFunctionName:
+    Description: Delete Item Lambda Function Name
+    Value: !Ref DeleteItemFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-DeleteItemFunctionName'
+
+  # Log Group
+  ApiGatewayLogGroupName:
+    Description: API Gateway CloudWatch Log Group Name
+    Value: !Ref ApiGatewayLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiGatewayLogGroupName'

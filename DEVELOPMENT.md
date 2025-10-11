@@ -14,10 +14,15 @@ This project follows a multi-language serverless architecture with the following
 │   ├── models/              # TypeScript interfaces and types
 │   ├── utils/               # Utility functions
 │   └── contracts/           # API contracts and schemas
-├── infrastructure/          # Infrastructure as Code
-│   ├── template.yaml        # SAM template
+├── infrastructure/          # Multi-stack Infrastructure as Code
+│   ├── stacks/              # CloudFormation stack templates
+│   │   ├── 01-foundation.yaml     # DynamoDB + IAM roles
+│   │   ├── 02-api-and-functions.yaml # API Gateway + Lambda functions
+│   │   └── 04-monitoring.yaml     # CloudWatch + alarms
+│   ├── scripts/             # Deployment automation scripts
 │   ├── parameters/          # Environment-specific parameters
-│   └── scripts/             # Deployment scripts
+│   ├── DEPLOYMENT_GUIDE.md  # Complete deployment guide
+│   └── ARCHITECTURE.md      # Multi-stack architecture details
 ├── .github/workflows/       # CI/CD pipelines
 ├── docs/                    # API documentation
 └── events/                  # Test events for local development
@@ -299,21 +304,27 @@ Three environments are supported:
 - **staging**: Pre-production environment for integration testing
 - **prod**: Production environment
 
-### Deployment Commands
+### Multi-Stack Deployment Commands
 
 ```bash
-# Deploy to development
-npm run deploy:dev
+# Deploy all stacks (recommended for first time)
+cd infrastructure
+./scripts/deploy-all.sh --stage dev --region us-east-1
 
-# Deploy to staging
-npm run deploy:staging
+# Deploy individual stacks (for targeted updates)
+./scripts/deploy-foundation.sh --stage dev        # DynamoDB + IAM
+./scripts/deploy-api-and-functions.sh --stage dev # API + Lambda functions
+./scripts/deploy-monitoring.sh --stage dev       # CloudWatch + alarms
 
-# Deploy to production (requires manual approval in CI/CD)
-npm run deploy:prod
+# Environment-specific deployments
+./scripts/deploy-all.sh --stage staging --region us-east-1
+./scripts/deploy-all.sh --stage prod --region us-west-2
 
-# Custom deployment
-infrastructure/scripts/deploy.sh --stage <stage> --region <region>
+# Cleanup all stacks
+./scripts/cleanup.sh --stage dev
 ```
+
+> 📖 **For detailed deployment scenarios and troubleshooting, see [infrastructure/DEPLOYMENT_GUIDE.md](./infrastructure/DEPLOYMENT_GUIDE.md)**
 
 ### CI/CD Pipeline
 

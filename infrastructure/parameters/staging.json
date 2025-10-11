@@ -1,6 +1,8 @@
 {
   "Parameters": {
     "Stage": "staging",
-    "TableName": "serverless-crud-api-staging-items"
+    "ProjectName": "serverless-crud-api",
+    "FoundationStackName": "serverless-crud-api-staging-foundation",
+    "ApiStackName": "serverless-crud-api-staging-api"
   }
 }

@@ -12,9 +12,10 @@ This document defines the mandatory best practices that every Lambda function in
 
 ### ✅ Dependencies & Imports
 - [ ] Minimal dependencies - only import what's needed
-- [ ] Shared utilities imported from `@serverless-crud-api/shared`
-- [ ] AWS SDK v3 used (not v2)
+- [ ] Language-specific shared utilities (Go: logger.go, Node.js: shared modules)
+- [ ] AWS SDK v3 used for Node.js, aws-sdk-go v1 for Go functions
 - [ ] Dependencies declared in package.json/go.mod with specific versions
+- [ ] Go functions use `provided.al2023` runtime with `bootstrap` handler
 
 ## Error Handling & Validation
 
@@ -139,11 +140,14 @@ This document defines the mandatory best practices that every Lambda function in
 - [ ] TypeScript types for shared interfaces
 
 ### Go Specific
-- [ ] Uses Go 1.x runtime
-- [ ] Proper error handling with Go conventions
-- [ ] Context passed through function calls
-- [ ] Proper struct tags for JSON marshaling
-- [ ] Go modules properly configured
+- [ ] Uses `provided.al2023` runtime with `bootstrap` handler
+- [ ] Go 1.21+ with proper error handling conventions
+- [ ] Context passed through function calls for cancellation
+- [ ] Proper struct tags for JSON marshaling (`json:"fieldName"`)
+- [ ] Go modules properly configured with `go mod tidy`
+- [ ] Structured logging with JSON output for CloudWatch
+- [ ] UUID validation using `github.com/google/uuid` package
+- [ ] DynamoDB operations with proper error handling and retries
 
 ## Automated Checks
 
@@ -212,10 +216,26 @@ The following checks should be automated in CI/CD:
 
 ## Templates and Examples
 
-Refer to the implemented `get-item` function as a reference implementation that follows all these best practices:
-- `functions/get-item/index.js` - Handler implementation
-- `functions/get-item/index.test.js` - Comprehensive test suite
+### Node.js Reference Implementation
+Refer to the implemented `get-item` function as a Node.js reference:
+- `functions/get-item/index.js` - Handler implementation with AWS SDK v3
+- `functions/get-item/index.test.js` - Comprehensive test suite with Jest
 - `functions/get-item/package.json` - Dependency management
-- `functions/get-item/README.md` - Documentation
+- `functions/get-item/README.md` - Function documentation
 
-Use this as a template for implementing other Lambda functions in the project.
+### Go Reference Implementation  
+Refer to the implemented `delete-item` function as a Go reference:
+- `functions/delete-item/main.go` - Handler implementation with structured logging
+- `functions/delete-item/logger.go` - Shared logging utility
+- `functions/delete-item/main_test.go` - Comprehensive test suite with Go testing
+- `functions/delete-item/go.mod` - Go module dependencies
+- `functions/delete-item/README.md` - Function documentation
+
+### Multi-Language Patterns
+- **Error Handling**: Consistent HTTP status codes and error response format
+- **Logging**: Structured JSON logging with request correlation IDs
+- **Environment Variables**: Standard environment variable usage across languages
+- **Testing**: Language-specific testing frameworks with >80% coverage
+- **Documentation**: Consistent README format with API contracts and examples
+
+Use these as templates for implementing additional Lambda functions in the project.

@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Foundation stack - DynamoDB table and base IAM roles for Serverless CRUD API
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment stage
+  
+  ProjectName:
+    Type: String
+    Default: serverless-crud-api
+    Description: Project name for resource naming
+
+Resources:
+  # DynamoDB Table
+  ItemsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-${Stage}-items'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: CategoryIndex
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Component
+          Value: Foundation
+
+  # Base Lambda Execution Role Template
+  BaseLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Stage}-base-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Component
+          Value: Foundation
+
+  # DynamoDB Access Policy for Lambda Functions
+  DynamoDBAccessPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Stage}-dynamodb-access'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:Scan
+            Resource:
+              - !GetAtt ItemsTable.Arn
+              - !Sub '${ItemsTable.Arn}/index/*'
+      Roles:
+        - !Ref BaseLambdaExecutionRole
+
+Outputs:
+  # Table Information
+  ItemsTableName:
+    Description: DynamoDB table name for items
+    Value: !Ref ItemsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ItemsTableName'
+
+  ItemsTableArn:
+    Description: DynamoDB table ARN
+    Value: !GetAtt ItemsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ItemsTableArn'
+
+  # IAM Role Information
+  BaseLambdaExecutionRoleArn:
+    Description: Base Lambda execution role ARN
+    Value: !GetAtt BaseLambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BaseLambdaExecutionRoleArn'
+
+  # Stack Information
+  FoundationStackName:
+    Description: Foundation stack name for cross-stack references
+    Value: !Ref AWS::StackName
+    Export:
+      Name: !Sub '${AWS::StackName}-StackName'
+
+  ProjectName:
+    Description: Project name for resource naming
+    Value: !Ref ProjectName
+    Export:
+      Name: !Sub '${AWS::StackName}-ProjectName'
+
+  Stage:
+    Description: Deployment stage
+    Value: !Ref Stage
+    Export:
+      Name: !Sub '${AWS::StackName}-Stage'
