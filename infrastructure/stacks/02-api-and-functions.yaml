@@ -53,14 +53,6 @@ Globals:
       AllowOrigin: "'*'"
       AllowCredentials: false
     TracingEnabled: true
-    MethodSettings:
-      - ResourcePath: '/*'
-        HttpMethod: '*'
-        LoggingLevel: INFO
-        DataTraceEnabled: true
-        MetricsEnabled: true
-        ThrottlingRateLimit: 100
-        ThrottlingBurstLimit: 200
 
 Resources:
   # API Key for authentication
@@ -188,21 +180,7 @@ Resources:
             Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
       EndpointConfiguration:
         Type: REGIONAL
-      AccessLogSetting:
-        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
-        Format: >
-          {
-            "requestId": "$context.requestId",
-            "requestTime": "$context.requestTime",
-            "httpMethod": "$context.httpMethod",
-            "resourcePath": "$context.resourcePath",
-            "status": "$context.status",
-            "responseLength": "$context.responseLength",
-            "responseTime": "$context.responseTime",
-            "userAgent": "$context.identity.userAgent",
-            "sourceIp": "$context.identity.sourceIp",
-            "apiKeyId": "$context.identity.apiKeyId"
-          }
+
       GatewayResponses:
         DEFAULT_4XX:
           ResponseParameters:
@@ -214,39 +192,7 @@ Resources:
             Headers:
               Access-Control-Allow-Origin: "'*'"
               Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
-        UNAUTHORIZED:
-          ResponseParameters:
-            Headers:
-              Access-Control-Allow-Origin: "'*'"
-              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
-          ResponseTemplates:
-            application/json: |
-              {
-                "error": "Unauthorized",
-                "message": "API key required. Please include a valid API key in the X-API-Key header."
-              }
-        FORBIDDEN:
-          ResponseParameters:
-            Headers:
-              Access-Control-Allow-Origin: "'*'"
-              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
-          ResponseTemplates:
-            application/json: |
-              {
-                "error": "Forbidden",
-                "message": "API key is invalid or usage limit exceeded."
-              }
-        THROTTLED:
-          ResponseParameters:
-            Headers:
-              Access-Control-Allow-Origin: "'*'"
-              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
-          ResponseTemplates:
-            application/json: |
-              {
-                "error": "Too Many Requests",
-                "message": "Request rate limit exceeded. Please try again later."
-              }
+
       Tags:
         Project: 
           Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
@@ -287,9 +233,6 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items
             Method: POST
-            Auth:
-              ApiKeyRequired: !If [EnableApiKey, true, false]
-            RequestValidatorId: !Ref ApiRequestValidator
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -317,9 +260,6 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: GET
-            Auth:
-              ApiKeyRequired: !If [EnableApiKey, true, false]
-            RequestValidatorId: !Ref ApiRequestValidator
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -347,9 +287,6 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: PUT
-            Auth:
-              ApiKeyRequired: !If [EnableApiKey, true, false]
-            RequestValidatorId: !Ref ApiRequestValidator
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -388,9 +325,6 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: DELETE
-            Auth:
-              ApiKeyRequired: !If [EnableApiKey, true, false]
-            RequestValidatorId: !Ref ApiRequestValidator
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:

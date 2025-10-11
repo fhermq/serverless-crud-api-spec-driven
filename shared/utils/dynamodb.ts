@@ -11,7 +11,14 @@ import {
   DeleteCommand,
   QueryCommand
 } from '@aws-sdk/lib-dynamodb';
-import AWSXRay from 'aws-xray-sdk-core';
+// Optional X-Ray import - will be undefined if not available
+let AWSXRay: any;
+try {
+  AWSXRay = require('aws-xray-sdk-core');
+} catch (error) {
+  // X-Ray not available, tracing will be disabled
+  AWSXRay = null;
+}
 import { Item, CreateItemInput, UpdateItemInput } from '../contracts/api';
 import { generateUUID, generateTimestamp } from './uuid';
 import { logger } from './logger';
@@ -60,8 +67,8 @@ async function getDynamoDBClient(requestId?: string): Promise<{
     })
   });
 
-  // Apply X-Ray tracing if enabled
-  const tracedClient = config.enableXRayTracing ? AWSXRay.captureAWSv3Client(client) : client;
+  // Apply X-Ray tracing if enabled and available
+  const tracedClient = (config.enableXRayTracing && AWSXRay) ? AWSXRay.captureAWSv3Client(client) : client;
 
   const docClient = DynamoDBDocumentClient.from(tracedClient, {
     marshallOptions: {

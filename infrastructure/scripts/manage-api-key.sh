@@ -179,7 +179,7 @@ enable_auth() {
         --stack-name "$API_STACK_NAME" \
         --template-body "file://${INFRASTRUCTURE_DIR}/stacks/02-api-and-functions.yaml" \
         --parameters $PARAMETERS \
-        --capabilities CAPABILITY_IAM \
+        --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
         --region "$REGION"
     
     print_status "Waiting for stack update to complete..."
