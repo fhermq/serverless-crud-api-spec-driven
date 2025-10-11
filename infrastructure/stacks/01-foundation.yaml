@@ -13,8 +13,218 @@ Parameters:
     Type: String
     Default: serverless-crud-api
     Description: Project name for resource naming
+  
+  GitHubRepository:
+    Type: String
+    Default: ""
+    Description: GitHub repository in format 'owner/repo' for OIDC trust policy (optional)
+  
+  GitHubBranch:
+    Type: String
+    Default: "main"
+    Description: GitHub branch for OIDC trust policy
+
+Conditions:
+  HasGitHubRepository: !Not [!Equals [!Ref GitHubRepository, ""]]
 
 Resources:
+  # OIDC Identity Provider for GitHub Actions
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCIdentityProvider
+    Condition: HasGitHubRepository
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        # GitHub's OIDC thumbprint (updated as of 2023)
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Component
+          Value: OIDC
+
+  # IAM Role for GitHub Actions Deployment with OIDC
+  GitHubActionsDeploymentRole:
+    Type: AWS::IAM::Role
+    Condition: HasGitHubRepository
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Stage}-github-actions-deploy-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com'
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}'
+      MaxSessionDuration: 3600  # 1 hour maximum
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Component
+          Value: OIDC
+
+  # Deployment permissions policy for GitHub Actions
+  GitHubActionsDeploymentPolicy:
+    Type: AWS::IAM::Policy
+    Condition: HasGitHubRepository
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Stage}-github-actions-deploy-policy'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # CloudFormation permissions
+          - Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResources
+              - cloudformation:GetTemplate
+              - cloudformation:ListStacks
+              - cloudformation:ValidateTemplate
+              - cloudformation:CreateChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:ListChangeSets
+            Resource: 
+              - !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/${ProjectName}-${Stage}-*/*'
+              - !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/aws-sam-cli-managed-default'
+              - !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/aws-sam-cli-managed-default/*'
+          
+          # S3 permissions for SAM artifacts
+          - Effect: Allow
+            Action:
+              - s3:CreateBucket
+              - s3:GetBucketLocation
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:GetBucketVersioning
+              - s3:PutBucketVersioning
+              - s3:GetBucketPolicy
+              - s3:PutBucketPolicy
+            Resource:
+              - 'arn:aws:s3:::aws-sam-cli-managed-default-*'
+              - 'arn:aws:s3:::aws-sam-cli-managed-default-*/*'
+          
+          # Lambda permissions
+          - Effect: Allow
+            Action:
+              - lambda:CreateFunction
+              - lambda:UpdateFunctionCode
+              - lambda:UpdateFunctionConfiguration
+              - lambda:DeleteFunction
+              - lambda:GetFunction
+              - lambda:ListFunctions
+              - lambda:InvokeFunction
+              - lambda:AddPermission
+              - lambda:RemovePermission
+              - lambda:GetPolicy
+              - lambda:PutProvisionedConcurrencyConfig
+              - lambda:DeleteProvisionedConcurrencyConfig
+              - lambda:GetProvisionedConcurrencyConfig
+              - lambda:ListProvisionedConcurrencyConfigs
+              - lambda:TagResource
+              - lambda:UntagResource
+              - lambda:ListTags
+            Resource: 
+              - !Sub 'arn:aws:lambda:*:${AWS::AccountId}:function:${ProjectName}-${Stage}-*'
+          
+          # API Gateway permissions
+          - Effect: Allow
+            Action:
+              - apigateway:GET
+              - apigateway:POST
+              - apigateway:PUT
+              - apigateway:DELETE
+              - apigateway:PATCH
+            Resource: 
+              - !Sub 'arn:aws:apigateway:*::/restapis'
+              - !Sub 'arn:aws:apigateway:*::/restapis/*'
+          
+          # IAM permissions for role management
+          - Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:GetRole
+              - iam:PassRole
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:GetRolePolicy
+              - iam:ListRolePolicies
+              - iam:ListAttachedRolePolicies
+              - iam:TagRole
+              - iam:UntagRole
+            Resource: 
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-${Stage}-*'
+            Condition:
+              StringEquals:
+                'iam:PassedToService': 
+                  - lambda.amazonaws.com
+                  - apigateway.amazonaws.com
+          
+          # CloudWatch permissions
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:DescribeLogGroups
+              - logs:PutRetentionPolicy
+              - logs:TagLogGroup
+              - logs:UntagLogGroup
+              - cloudwatch:PutDashboard
+              - cloudwatch:DeleteDashboards
+              - cloudwatch:GetDashboard
+              - cloudwatch:ListDashboards
+              - cloudwatch:PutMetricAlarm
+              - cloudwatch:DeleteAlarms
+              - cloudwatch:DescribeAlarms
+            Resource: '*'
+          
+          # SNS permissions for monitoring
+          - Effect: Allow
+            Action:
+              - sns:CreateTopic
+              - sns:DeleteTopic
+              - sns:GetTopicAttributes
+              - sns:SetTopicAttributes
+              - sns:Subscribe
+              - sns:Unsubscribe
+              - sns:ListTopics
+              - sns:ListSubscriptionsByTopic
+              - sns:TagResource
+              - sns:UntagResource
+            Resource: 
+              - !Sub 'arn:aws:sns:*:${AWS::AccountId}:${ProjectName}-${Stage}-*'
+          
+          # DynamoDB permissions (read-only for deployment validation)
+          - Effect: Allow
+            Action:
+              - dynamodb:DescribeTable
+              - dynamodb:ListTables
+            Resource: 
+              - !Sub 'arn:aws:dynamodb:*:${AWS::AccountId}:table/${ProjectName}-${Stage}-*'
+      Roles:
+        - !Ref GitHubActionsDeploymentRole
+
   # DynamoDB Table
   ItemsTable:
     Type: AWS::DynamoDB::Table
@@ -75,6 +285,30 @@ Resources:
         - Key: Component
           Value: Foundation
 
+  # Secrets Manager Secret for Database Configuration
+  DatabaseConfigSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}-${Stage}-database-config'
+      Description: !Sub 'Database configuration for ${ProjectName} ${Stage} environment'
+      SecretString: !Sub |
+        {
+          "tableName": "${ItemsTable}",
+          "region": "${AWS::Region}",
+          "maxRetries": 3,
+          "timeout": 5000,
+          "connectionPoolSize": 10,
+          "enableXRayTracing": true,
+          "logLevel": "INFO"
+        }
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Component
+          Value: Database
+
   # DynamoDB Access Policy for Lambda Functions
   DynamoDBAccessPolicy:
     Type: AWS::IAM::Policy
@@ -94,6 +328,11 @@ Resources:
             Resource:
               - !GetAtt ItemsTable.Arn
               - !Sub '${ItemsTable.Arn}/index/*'
+          # Allow access to database configuration secret
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource: !Ref DatabaseConfigSecret
       Roles:
         - !Ref BaseLambdaExecutionRole
 
@@ -117,6 +356,28 @@ Outputs:
     Value: !GetAtt BaseLambdaExecutionRole.Arn
     Export:
       Name: !Sub '${AWS::StackName}-BaseLambdaExecutionRoleArn'
+
+  # Database Configuration Secret
+  DatabaseConfigSecretArn:
+    Description: Database configuration secret ARN
+    Value: !Ref DatabaseConfigSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseConfigSecretArn'
+
+  # OIDC Information
+  GitHubOIDCProviderArn:
+    Condition: HasGitHubRepository
+    Description: GitHub OIDC Identity Provider ARN
+    Value: !Ref GitHubOIDCProvider
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubOIDCProviderArn'
+
+  GitHubActionsDeploymentRoleArn:
+    Condition: HasGitHubRepository
+    Description: GitHub Actions deployment role ARN for OIDC authentication
+    Value: !GetAtt GitHubActionsDeploymentRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubActionsDeploymentRoleArn'
 
   # Stack Information
   FoundationStackName:

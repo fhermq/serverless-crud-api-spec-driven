@@ -7,6 +7,21 @@ Parameters:
     Type: String
     Description: Name of the foundation stack to import values from
     Default: serverless-crud-api-dev-foundation
+  
+  EnableApiKeyAuth:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Enable API key authentication for the API
+  
+  ApiKeyName:
+    Type: String
+    Default: ""
+    Description: Name for the API key (optional, auto-generated if empty)
+
+Conditions:
+  EnableApiKey: !Equals [!Ref EnableApiKeyAuth, "true"]
+  HasApiKeyName: !Not [!Equals [!Ref ApiKeyName, ""]]
 
 Globals:
   Function:
@@ -17,6 +32,8 @@ Globals:
       Variables:
         DYNAMODB_TABLE_NAME: 
           Fn::ImportValue: !Sub '${FoundationStackName}-ItemsTableName'
+        DATABASE_CONFIG_SECRET_ARN:
+          Fn::ImportValue: !Sub '${FoundationStackName}-DatabaseConfigSecretArn'
         STAGE: 
           Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
         LOG_LEVEL: INFO
@@ -46,6 +63,83 @@ Globals:
         ThrottlingBurstLimit: 200
 
 Resources:
+  # API Key for authentication
+  ApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Condition: EnableApiKey
+    Properties:
+      Name: !If
+        - HasApiKeyName
+        - !Ref ApiKeyName
+        - !Sub 
+          - '${ProjectName}-${Stage}-api-key'
+          - ProjectName:
+              Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+            Stage:
+              Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      Description: !Sub 
+        - 'API Key for ${ProjectName} ${Stage} environment'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      Enabled: true
+      Tags:
+        - Key: Project
+          Value: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+        - Key: Stage
+          Value:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+        - Key: Component
+          Value: API
+
+  # Usage Plan for API throttling and quotas
+  ApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Condition: EnableApiKey
+    Properties:
+      UsagePlanName: !Sub 
+        - '${ProjectName}-${Stage}-usage-plan'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      Description: !Sub 
+        - 'Usage plan for ${ProjectName} ${Stage} API'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      ApiStages:
+        - ApiId: !Ref ItemsApi
+          Stage: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      Throttle:
+        RateLimit: 100    # requests per second
+        BurstLimit: 200   # burst capacity
+      Quota:
+        Limit: 10000      # requests per period
+        Period: DAY       # daily quota
+      Tags:
+        - Key: Project
+          Value: 
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+        - Key: Stage
+          Value:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+        - Key: Component
+          Value: API
+
+  # Link API Key to Usage Plan
+  ApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Condition: EnableApiKey
+    Properties:
+      KeyId: !Ref ApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ApiUsagePlan
+
   # CloudWatch Log Group for API Gateway Access Logs
   ApiGatewayLogGroup:
     Type: AWS::Logs::LogGroup
@@ -66,6 +160,20 @@ Resources:
             Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
         - Key: Component
           Value: API
+
+  # Request Validator for API Gateway
+  ApiRequestValidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties:
+      RestApiId: !Ref ItemsApi
+      Name: !Sub 
+        - '${ProjectName}-${Stage}-request-validator'
+        - ProjectName:
+            Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
+          Stage:
+            Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
+      ValidateRequestBody: true
+      ValidateRequestParameters: true
 
   # API Gateway
   ItemsApi:
@@ -92,7 +200,8 @@ Resources:
             "responseLength": "$context.responseLength",
             "responseTime": "$context.responseTime",
             "userAgent": "$context.identity.userAgent",
-            "sourceIp": "$context.identity.sourceIp"
+            "sourceIp": "$context.identity.sourceIp",
+            "apiKeyId": "$context.identity.apiKeyId"
           }
       GatewayResponses:
         DEFAULT_4XX:
@@ -105,6 +214,39 @@ Resources:
             Headers:
               Access-Control-Allow-Origin: "'*'"
               Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+        UNAUTHORIZED:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+          ResponseTemplates:
+            application/json: |
+              {
+                "error": "Unauthorized",
+                "message": "API key required. Please include a valid API key in the X-API-Key header."
+              }
+        FORBIDDEN:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+          ResponseTemplates:
+            application/json: |
+              {
+                "error": "Forbidden",
+                "message": "API key is invalid or usage limit exceeded."
+              }
+        THROTTLED:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'"
+          ResponseTemplates:
+            application/json: |
+              {
+                "error": "Too Many Requests",
+                "message": "Request rate limit exceeded. Please try again later."
+              }
       Tags:
         Project: 
           Fn::ImportValue: !Sub '${FoundationStackName}-ProjectName'
@@ -133,6 +275,8 @@ Resources:
         Variables:
           DYNAMODB_TABLE_NAME: 
             Fn::ImportValue: !Sub '${FoundationStackName}-ItemsTableName'
+          DATABASE_CONFIG_SECRET_ARN:
+            Fn::ImportValue: !Sub '${FoundationStackName}-DatabaseConfigSecretArn'
           STAGE: 
             Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
           LOG_LEVEL: INFO
@@ -143,6 +287,9 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items
             Method: POST
+            Auth:
+              ApiKeyRequired: !If [EnableApiKey, true, false]
+            RequestValidatorId: !Ref ApiRequestValidator
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -170,6 +317,9 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: GET
+            Auth:
+              ApiKeyRequired: !If [EnableApiKey, true, false]
+            RequestValidatorId: !Ref ApiRequestValidator
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -197,6 +347,9 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: PUT
+            Auth:
+              ApiKeyRequired: !If [EnableApiKey, true, false]
+            RequestValidatorId: !Ref ApiRequestValidator
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -223,6 +376,8 @@ Resources:
         Variables:
           DYNAMODB_TABLE_NAME: 
             Fn::ImportValue: !Sub '${FoundationStackName}-ItemsTableName'
+          DATABASE_CONFIG_SECRET_ARN:
+            Fn::ImportValue: !Sub '${FoundationStackName}-DatabaseConfigSecretArn'
           STAGE: 
             Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
           LOG_LEVEL: INFO
@@ -233,6 +388,9 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: DELETE
+            Auth:
+              ApiKeyRequired: !If [EnableApiKey, true, false]
+            RequestValidatorId: !Ref ApiRequestValidator
       Role:
         Fn::ImportValue: !Sub '${FoundationStackName}-BaseLambdaExecutionRoleArn'
       Tags:
@@ -305,6 +463,21 @@ Outputs:
     Value: !Ref DeleteItemFunction
     Export:
       Name: !Sub '${AWS::StackName}-DeleteItemFunctionName'
+
+  # API Authentication
+  ApiKeyId:
+    Condition: EnableApiKey
+    Description: API Key ID for authentication
+    Value: !Ref ApiKey
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiKeyId'
+
+  ApiUsagePlanId:
+    Condition: EnableApiKey
+    Description: API Usage Plan ID
+    Value: !Ref ApiUsagePlan
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiUsagePlanId'
 
   # Log Group
   ApiGatewayLogGroupName:

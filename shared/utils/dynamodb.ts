@@ -1,32 +1,93 @@
 /**
- * DynamoDB utilities and helpers
+ * DynamoDB utilities and helpers with secure configuration
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { 
-  DynamoDBDocumentClient, 
-  PutCommand, 
-  GetCommand, 
-  UpdateCommand, 
+import {
+  DynamoDBDocumentClient,
+  PutCommand,
+  GetCommand,
+  UpdateCommand,
   DeleteCommand,
   QueryCommand
 } from '@aws-sdk/lib-dynamodb';
+import AWSXRay from 'aws-xray-sdk-core';
 import { Item, CreateItemInput, UpdateItemInput } from '../contracts/api';
 import { generateUUID, generateTimestamp } from './uuid';
 import { logger } from './logger';
 import { NotFoundError, ApiError } from '../models/error';
+import { getDatabaseConfig, validateDatabaseConfig, createSecureLogString, DatabaseConfig } from './secure-config';
 
-// DynamoDB client configuration
-const dynamoDBClient = new DynamoDBClient({
-  region: process.env.AWS_REGION || 'us-east-1',
-  ...(process.env.DYNAMODB_ENDPOINT && {
-    endpoint: process.env.DYNAMODB_ENDPOINT
-  })
-});
+// Client cache to avoid recreating clients
+let clientCache: {
+  client: DynamoDBClient;
+  docClient: DynamoDBDocumentClient;
+  config: DatabaseConfig;
+} | null = null;
 
-const docClient = DynamoDBDocumentClient.from(dynamoDBClient);
+/**
+ * Get or create DynamoDB client with secure configuration
+ */
+async function getDynamoDBClient(requestId?: string): Promise<{
+  docClient: DynamoDBDocumentClient;
+  config: DatabaseConfig;
+}> {
+  // Return cached client if available and configuration hasn't changed
+  if (clientCache) {
+    return {
+      docClient: clientCache.docClient,
+      config: clientCache.config
+    };
+  }
 
-const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'serverless-crud-api-items';
+  const config = await getDatabaseConfig(requestId);
+  validateDatabaseConfig(config);
+
+  logger.debug('Creating DynamoDB client with secure configuration', {
+    configString: createSecureLogString(config),
+    requestId
+  });
+
+  // Create DynamoDB client with secure configuration
+  const client = new DynamoDBClient({
+    region: config.region,
+    maxAttempts: config.maxRetries,
+    requestHandler: {
+      requestTimeout: config.timeout
+    },
+    ...(process.env.DYNAMODB_ENDPOINT && {
+      endpoint: process.env.DYNAMODB_ENDPOINT
+    })
+  });
+
+  // Apply X-Ray tracing if enabled
+  const tracedClient = config.enableXRayTracing ? AWSXRay.captureAWSv3Client(client) : client;
+
+  const docClient = DynamoDBDocumentClient.from(tracedClient, {
+    marshallOptions: {
+      removeUndefinedValues: true,
+      convertEmptyValues: false
+    },
+    unmarshallOptions: {
+      wrapNumbers: false
+    }
+  });
+
+  // Cache the client and configuration
+  clientCache = {
+    client: tracedClient,
+    docClient,
+    config
+  };
+
+  logger.info('DynamoDB client created successfully', {
+    configString: createSecureLogString(config),
+    xrayEnabled: config.enableXRayTracing,
+    requestId
+  });
+
+  return { docClient, config };
+}
 
 /**
  * Create a new item in DynamoDB
@@ -35,7 +96,7 @@ export async function createItem(input: CreateItemInput, requestId?: string): Pr
   const startTime = Date.now();
   const id = generateUUID();
   const timestamp = generateTimestamp();
-  
+
   const item: Item = {
     id,
     name: input.name,
@@ -47,33 +108,39 @@ export async function createItem(input: CreateItemInput, requestId?: string): Pr
   };
 
   try {
-    logger.debug('Creating item in DynamoDB', { itemId: id, requestId });
-    
+    const { docClient, config } = await getDynamoDBClient(requestId);
+
+    logger.debug('Creating item in DynamoDB', {
+      itemId: id,
+      tableName: config.tableName,
+      requestId
+    });
+
     const command = new PutCommand({
-      TableName: TABLE_NAME,
+      TableName: config.tableName,
       Item: item,
       ConditionExpression: 'attribute_not_exists(id)' // Ensure no duplicate IDs
     });
 
     await docClient.send(command);
-    
+
     const duration = Date.now() - startTime;
-    logger.logDatabaseOperation('PUT', TABLE_NAME, { id }, duration);
+    logger.logDatabaseOperation('PUT', config.tableName, { id }, duration);
     logger.info('Item created successfully', { itemId: id, requestId });
-    
+
     return item;
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error('Failed to create item', error as Error, { 
-      itemId: id, 
+    logger.error('Failed to create item', error as Error, {
+      itemId: id,
       requestId,
       duration: `${duration}ms`
     });
-    
+
     if (error instanceof Error && error.name === 'ConditionalCheckFailedException') {
       throw new ApiError('Item with this ID already exists', 409, undefined, requestId);
     }
-    
+
     throw new ApiError('Failed to create item', 500, undefined, requestId);
   }
 }
@@ -83,40 +150,46 @@ export async function createItem(input: CreateItemInput, requestId?: string): Pr
  */
 export async function getItem(id: string, requestId?: string): Promise<Item> {
   const startTime = Date.now();
-  
+
   try {
-    logger.debug('Getting item from DynamoDB', { itemId: id, requestId });
-    
+    const { docClient, config } = await getDynamoDBClient(requestId);
+
+    logger.debug('Getting item from DynamoDB', {
+      itemId: id,
+      tableName: config.tableName,
+      requestId
+    });
+
     const command = new GetCommand({
-      TableName: TABLE_NAME,
+      TableName: config.tableName,
       Key: { id }
     });
 
     const result = await docClient.send(command);
-    
+
     const duration = Date.now() - startTime;
-    logger.logDatabaseOperation('GET', TABLE_NAME, { id }, duration);
-    
+    logger.logDatabaseOperation('GET', config.tableName, { id }, duration);
+
     if (!result.Item) {
       logger.info('Item not found', { itemId: id, requestId });
       throw new NotFoundError('Item', id, requestId);
     }
-    
+
     logger.info('Item retrieved successfully', { itemId: id, requestId });
     return result.Item as Item;
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     if (error instanceof NotFoundError) {
       throw error;
     }
-    
-    logger.error('Failed to get item', error as Error, { 
-      itemId: id, 
+
+    logger.error('Failed to get item', error as Error, {
+      itemId: id,
       requestId,
       duration: `${duration}ms`
     });
-    
+
     throw new ApiError('Failed to retrieve item', 500, undefined, requestId);
   }
 }
@@ -127,46 +200,52 @@ export async function getItem(id: string, requestId?: string): Promise<Item> {
 export async function updateItem(id: string, input: UpdateItemInput, requestId?: string): Promise<Item> {
   const startTime = Date.now();
   const timestamp = generateTimestamp();
-  
+
   try {
-    logger.debug('Updating item in DynamoDB', { itemId: id, requestId });
-    
+    const { docClient, config } = await getDynamoDBClient(requestId);
+
+    logger.debug('Updating item in DynamoDB', {
+      itemId: id,
+      tableName: config.tableName,
+      requestId
+    });
+
     // Build update expression dynamically
     const updateExpressions: string[] = [];
     const expressionAttributeNames: Record<string, string> = {};
     const expressionAttributeValues: Record<string, any> = {};
-    
+
     // Always update the updatedAt timestamp
     updateExpressions.push('#updatedAt = :updatedAt');
     expressionAttributeNames['#updatedAt'] = 'updatedAt';
     expressionAttributeValues[':updatedAt'] = timestamp;
-    
+
     if (input.name !== undefined) {
       updateExpressions.push('#name = :name');
       expressionAttributeNames['#name'] = 'name';
       expressionAttributeValues[':name'] = input.name;
     }
-    
+
     if (input.description !== undefined) {
       updateExpressions.push('#description = :description');
       expressionAttributeNames['#description'] = 'description';
       expressionAttributeValues[':description'] = input.description;
     }
-    
+
     if (input.category !== undefined) {
       updateExpressions.push('#category = :category');
       expressionAttributeNames['#category'] = 'category';
       expressionAttributeValues[':category'] = input.category;
     }
-    
+
     if (input.price !== undefined) {
       updateExpressions.push('#price = :price');
       expressionAttributeNames['#price'] = 'price';
       expressionAttributeValues[':price'] = input.price;
     }
-    
+
     const command = new UpdateCommand({
-      TableName: TABLE_NAME,
+      TableName: config.tableName,
       Key: { id },
       UpdateExpression: `SET ${updateExpressions.join(', ')}`,
       ExpressionAttributeNames: expressionAttributeNames,
@@ -176,26 +255,26 @@ export async function updateItem(id: string, input: UpdateItemInput, requestId?:
     });
 
     const result = await docClient.send(command);
-    
+
     const duration = Date.now() - startTime;
-    logger.logDatabaseOperation('UPDATE', TABLE_NAME, { id }, duration);
+    logger.logDatabaseOperation('UPDATE', config.tableName, { id }, duration);
     logger.info('Item updated successfully', { itemId: id, requestId });
-    
+
     return result.Attributes as Item;
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     if (error instanceof Error && error.name === 'ConditionalCheckFailedException') {
       logger.info('Item not found for update', { itemId: id, requestId });
       throw new NotFoundError('Item', id, requestId);
     }
-    
-    logger.error('Failed to update item', error as Error, { 
-      itemId: id, 
+
+    logger.error('Failed to update item', error as Error, {
+      itemId: id,
       requestId,
       duration: `${duration}ms`
     });
-    
+
     throw new ApiError('Failed to update item', 500, undefined, requestId);
   }
 }
@@ -205,46 +284,52 @@ export async function updateItem(id: string, input: UpdateItemInput, requestId?:
  */
 export async function deleteItem(id: string, requestId?: string): Promise<void> {
   const startTime = Date.now();
-  
+
   try {
-    logger.debug('Deleting item from DynamoDB', { itemId: id, requestId });
-    
+    const { docClient, config } = await getDynamoDBClient(requestId);
+
+    logger.debug('Deleting item from DynamoDB', {
+      itemId: id,
+      tableName: config.tableName,
+      requestId
+    });
+
     const command = new DeleteCommand({
-      TableName: TABLE_NAME,
+      TableName: config.tableName,
       Key: { id },
       ConditionExpression: 'attribute_exists(id)', // Ensure item exists
       ReturnValues: 'ALL_OLD'
     });
 
     const result = await docClient.send(command);
-    
+
     const duration = Date.now() - startTime;
-    logger.logDatabaseOperation('DELETE', TABLE_NAME, { id }, duration);
-    
+    logger.logDatabaseOperation('DELETE', config.tableName, { id }, duration);
+
     if (!result.Attributes) {
       logger.info('Item not found for deletion', { itemId: id, requestId });
       throw new NotFoundError('Item', id, requestId);
     }
-    
+
     logger.info('Item deleted successfully', { itemId: id, requestId });
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     if (error instanceof NotFoundError) {
       throw error;
     }
-    
+
     if (error instanceof Error && error.name === 'ConditionalCheckFailedException') {
       logger.info('Item not found for deletion', { itemId: id, requestId });
       throw new NotFoundError('Item', id, requestId);
     }
-    
-    logger.error('Failed to delete item', error as Error, { 
-      itemId: id, 
+
+    logger.error('Failed to delete item', error as Error, {
+      itemId: id,
       requestId,
       duration: `${duration}ms`
     });
-    
+
     throw new ApiError('Failed to delete item', 500, undefined, requestId);
   }
 }
@@ -254,12 +339,18 @@ export async function deleteItem(id: string, requestId?: string): Promise<void> 
  */
 export async function getItemsByCategory(category: string, requestId?: string): Promise<Item[]> {
   const startTime = Date.now();
-  
+
   try {
-    logger.debug('Querying items by category', { category, requestId });
-    
+    const { docClient, config } = await getDynamoDBClient(requestId);
+
+    logger.debug('Querying items by category', {
+      category,
+      tableName: config.tableName,
+      requestId
+    });
+
     const command = new QueryCommand({
-      TableName: TABLE_NAME,
+      TableName: config.tableName,
       IndexName: 'CategoryIndex',
       KeyConditionExpression: 'category = :category',
       ExpressionAttributeValues: {
@@ -269,24 +360,24 @@ export async function getItemsByCategory(category: string, requestId?: string): 
     });
 
     const result = await docClient.send(command);
-    
+
     const duration = Date.now() - startTime;
-    logger.logDatabaseOperation('QUERY', TABLE_NAME, { category }, duration);
-    logger.info('Items retrieved by category', { 
-      category, 
-      count: result.Items?.length || 0, 
-      requestId 
+    logger.logDatabaseOperation('QUERY', config.tableName, { category }, duration);
+    logger.info('Items retrieved by category', {
+      category,
+      count: result.Items?.length || 0,
+      requestId
     });
-    
+
     return (result.Items || []) as Item[];
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error('Failed to query items by category', error as Error, { 
-      category, 
+    logger.error('Failed to query items by category', error as Error, {
+      category,
       requestId,
       duration: `${duration}ms`
     });
-    
+
     throw new ApiError('Failed to retrieve items', 500, undefined, requestId);
   }
 }
@@ -294,18 +385,32 @@ export async function getItemsByCategory(category: string, requestId?: string): 
 /**
  * Health check for DynamoDB connection
  */
-export async function healthCheck(): Promise<boolean> {
+export async function healthCheck(requestId?: string): Promise<boolean> {
   try {
+    const { docClient, config } = await getDynamoDBClient(requestId);
+
     // Try to describe the table to check connectivity
     const command = new GetCommand({
-      TableName: TABLE_NAME,
+      TableName: config.tableName,
       Key: { id: 'health-check-non-existent-id' }
     });
-    
+
     await docClient.send(command);
+    logger.info('DynamoDB health check passed', {
+      tableName: config.tableName,
+      requestId
+    });
     return true;
   } catch (error) {
-    logger.error('DynamoDB health check failed', error as Error);
+    logger.error('DynamoDB health check failed', error as Error, { requestId });
     return false;
   }
+}
+
+/**
+ * Clear client cache (useful for testing or configuration changes)
+ */
+export function clearClientCache(): void {
+  clientCache = null;
+  logger.debug('DynamoDB client cache cleared');
 }
