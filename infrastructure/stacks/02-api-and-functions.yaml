@@ -18,6 +18,28 @@ Parameters:
     Type: String
     Default: ""
     Description: Name for the API key (optional, auto-generated if empty)
+  
+  # API Throttling and Quota Parameters
+  ApiRateLimit:
+    Type: Number
+    Default: 10
+    Description: API requests per second rate limit
+    MinValue: 1
+    MaxValue: 10000
+  
+  ApiBurstLimit:
+    Type: Number
+    Default: 20
+    Description: API burst capacity limit
+    MinValue: 1
+    MaxValue: 5000
+  
+  ApiDailyQuota:
+    Type: Number
+    Default: 1000
+    Description: API daily quota limit
+    MinValue: 100
+    MaxValue: 1000000
 
 Conditions:
   EnableApiKey: !Equals [!Ref EnableApiKeyAuth, "true"]
@@ -108,11 +130,11 @@ Resources:
           Stage: 
             Fn::ImportValue: !Sub '${FoundationStackName}-Stage'
       Throttle:
-        RateLimit: 100    # requests per second
-        BurstLimit: 200   # burst capacity
+        RateLimit: !Ref ApiRateLimit
+        BurstLimit: !Ref ApiBurstLimit
       Quota:
-        Limit: 10000      # requests per period
-        Period: DAY       # daily quota
+        Limit: !Ref ApiDailyQuota
+        Period: DAY
       Tags:
         - Key: Project
           Value: 
@@ -331,8 +353,6 @@ Resources:
             RestApiId: !Ref ItemsApi
             Path: /items/{id}
             Method: DELETE
-            Auth:
-              ApiKeyRequired: !If [EnableApiKey, true, false]
             Auth:
               ApiKeyRequired: !If [EnableApiKey, true, false]
       Role:

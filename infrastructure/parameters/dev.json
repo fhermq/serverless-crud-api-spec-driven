@@ -3,6 +3,9 @@
     "Stage": "dev",
     "ProjectName": "serverless-crud-api",
     "FoundationStackName": "serverless-crud-api-dev-foundation",
-    "ApiStackName": "serverless-crud-api-dev-api"
+    "ApiStackName": "serverless-crud-api-dev-api",
+    "ApiRateLimit": "5",
+    "ApiBurstLimit": "10",
+    "ApiDailyQuota": "500"
   }
 }
