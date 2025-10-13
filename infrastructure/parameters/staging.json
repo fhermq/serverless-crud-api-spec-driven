@@ -2,7 +2,13 @@
   "Parameters": {
     "Stage": "staging",
     "ProjectName": "serverless-crud-api",
+    "Region": "us-east-1",
     "FoundationStackName": "serverless-crud-api-staging-foundation",
-    "ApiStackName": "serverless-crud-api-staging-api"
+    "ApiStackName": "serverless-crud-api-staging-api",
+    "ApiRateLimit": "25",
+    "ApiBurstLimit": "50",
+    "ApiDailyQuota": "2500",
+    "GitHubRepository": "",
+    "GitHubBranch": "main"
   }
 }

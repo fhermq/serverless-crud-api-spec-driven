@@ -14,6 +14,11 @@ Parameters:
     Default: serverless-crud-api
     Description: Project name for resource naming
   
+  Region:
+    Type: String
+    Default: us-east-1
+    Description: AWS region for deployment
+  
   GitHubRepository:
     Type: String
     Default: ""

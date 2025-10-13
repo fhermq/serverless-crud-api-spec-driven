@@ -1,23 +1,28 @@
-# Update Item Lambda Function
+# Update Item Function
 
-This Lambda function handles updating existing items in the DynamoDB table via HTTP PUT requests.
+Node.js Lambda function that updates existing items in DynamoDB.
 
-## Overview
+## Handler
 
-- **Runtime**: Node.js 18.x
+- **Runtime**: Node.js 20.x
 - **Handler**: `index.handler`
-- **HTTP Method**: PUT
-- **Endpoint**: `/items/{id}`
-- **Database**: DynamoDB UpdateItem operation
+- **Method**: PUT `/items/{id}`
 
-## Responsibilities
+## Local Testing
 
-This Lambda function is responsible for:
+```bash
+# Test locally
+sam local invoke UpdateItemFunction --event ../../events/update-item.json
 
-- **Item Updates**: Updating existing items in the DynamoDB table with partial or complete field updates
-- **Input Validation**: Validating item ID format (UUID v4) and request body data according to business rules
-- **Conditional Operations**: Ensuring items exist before updating using DynamoDB conditional expressions
-- **Data Integrity**: Maintaining data consistency with automatic timestamp updates and field validation
+# Run tests
+npm test
+```
+
+## Environment Variables
+
+- `DYNAMODB_TABLE_NAME` - DynamoDB table name
+- `STAGE` - Deployment stage
+- `LOG_LEVEL` - Logging level
 - **Error Handling**: Providing appropriate HTTP responses for validation errors, not found scenarios, and system failures
 - **Security**: Implementing input sanitization, security headers, and preventing injection attacks
 - **Monitoring**: Logging structured events and publishing custom CloudWatch metrics for observability

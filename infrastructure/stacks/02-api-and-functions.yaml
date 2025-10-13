@@ -8,6 +8,11 @@ Parameters:
     Description: Name of the foundation stack to import values from
     Default: serverless-crud-api-dev-foundation
   
+  Region:
+    Type: String
+    Default: us-east-1
+    Description: AWS region for deployment
+  
   EnableApiKeyAuth:
     Type: String
     Default: "false"
@@ -112,6 +117,7 @@ Resources:
   ApiUsagePlan:
     Type: AWS::ApiGateway::UsagePlan
     Condition: EnableApiKey
+    DependsOn: ItemsApiStage
     Properties:
       UsagePlanName: !Sub 
         - '${ProjectName}-${Stage}-usage-plan'

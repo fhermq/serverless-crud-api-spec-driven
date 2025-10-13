@@ -1,33 +1,28 @@
 # Get Item Function
 
-## Overview
-Lambda function written in Node.js that handles GET requests to retrieve items by ID from the CRUD API.
+Node.js Lambda function that retrieves items by ID from DynamoDB.
 
-## Language Choice
-Node.js was selected for this function due to its:
-- Fastest cold start times among supported runtimes
-- Minimal overhead for simple read operations
-- Excellent AWS SDK integration
-- Optimal for I/O intensive operations like database reads
+## Handler
 
-## Best Practices Implemented
+- **Runtime**: Node.js 20.x
+- **Handler**: `index.handler`
+- **Method**: GET `/items/{id}`
 
-### Performance Optimization
-- **Connection Reuse**: DynamoDB client is initialized outside the handler for connection reuse
-- **Built-in Retry Logic**: AWS SDK configured with adaptive retry mode and 3 max attempts
-- **X-Ray Tracing**: Distributed tracing enabled for performance monitoring
+## Local Testing
 
-### Security
-- **Input Sanitization**: All inputs are sanitized to prevent injection attacks
-- **Security Headers**: Comprehensive security headers added to all responses
-- **Environment Variable Validation**: Required environment variables validated at startup
+```bash
+# Test locally
+sam local invoke GetItemFunction --event ../../events/get-item.json
 
-### Reliability
-- **Circuit Breaker Pattern**: Prevents cascading failures during database outages
-- **Graceful Error Handling**: Comprehensive error handling with appropriate HTTP status codes
-- **Custom Metrics**: Detailed metrics published for monitoring and alerting
+# Run tests
+npm test
+```
 
-### Monitoring & Observability
+## Environment Variables
+
+- `DYNAMODB_TABLE_NAME` - DynamoDB table name
+- `STAGE` - Deployment stage
+- `LOG_LEVEL` - Logging level
 - **Structured Logging**: JSON-formatted logs with correlation IDs
 - **Performance Metrics**: Duration and count metrics for all operations
 - **Circuit Breaker Metrics**: Monitoring of circuit breaker state and failures

@@ -1,23 +1,32 @@
 # Delete Item Function
 
-## Overview
-Lambda function written in Go that handles DELETE requests to remove items from the CRUD API.
+Go Lambda function that deletes items from DynamoDB.
 
-## Language Choice
-Go was selected for this function due to its:
-- Fast execution and minimal cold start times
-- Minimal resource usage for simple operations
-- Excellent performance for delete operations
+## Handler
 
-## Responsibilities
-- Extract item ID from path parameters
-- Validate UUID format
-- Check if item exists before deletion
-- Delete item from DynamoDB
-- Return 204 No Content for successful deletions
-- Handle item not found scenarios appropriately
+- **Runtime**: provided.al2023 (Go)
+- **Handler**: `bootstrap`
+- **Method**: DELETE `/items/{id}`
 
-## Local Development
+## Local Testing
+
+```bash
+# Build
+go mod tidy
+GOOS=linux GOARCH=amd64 go build -o bootstrap main.go logger.go
+
+# Test locally
+sam local invoke DeleteItemFunction --event ../../events/delete-item.json
+
+# Run tests
+go test -v
+```
+
+## Environment Variables
+
+- `DYNAMODB_TABLE_NAME` - DynamoDB table name
+- `STAGE` - Deployment stage
+- `LOG_LEVEL` - Logging level
 
 ### Prerequisites
 - Go 1.21 or later

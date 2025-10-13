@@ -1,32 +1,32 @@
 # Create Item Function
 
-## Overview
-Lambda function written in Go that handles POST requests to create new items in the CRUD API.
+Go Lambda function that creates new items in DynamoDB.
 
-## Language Choice
-Go was selected for this function due to its:
-- Fast execution and minimal cold start times
-- Efficient memory usage for write operations
-- Excellent performance for concurrent operations
+## Handler
 
-## Responsibilities
-- Validate input data for new items
-- Generate UUID for new items
-- Set creation and update timestamps
-- Store item in DynamoDB
-- Return created item with 201 status
+- **Runtime**: provided.al2023 (Go)
+- **Handler**: `bootstrap`
+- **Method**: POST `/items`
 
-## Local Development
+## Local Testing
 
-### Prerequisites
-- Go 1.21 or later
-- AWS SAM CLI
-- Docker (for local DynamoDB)
-
-### Running Locally
 ```bash
-# Install dependencies
+# Build
 go mod tidy
+GOOS=linux GOARCH=amd64 go build -o bootstrap main.go logger.go
+
+# Test locally
+sam local invoke CreateItemFunction --event ../../events/create-item.json
+
+# Run tests
+go test -v
+```
+
+## Environment Variables
+
+- `DYNAMODB_TABLE_NAME` - DynamoDB table name
+- `STAGE` - Deployment stage
+- `LOG_LEVEL` - Logging level
 
 # Run tests
 go test ./...

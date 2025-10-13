@@ -1,32 +1,25 @@
 openapi: 3.0.3
 info:
   title: Serverless CRUD API
-  description: |
-    A serverless CRUD API built with AWS Lambda functions, API Gateway, and DynamoDB.
-    This API provides endpoints for managing items with full CRUD operations.
-    
-    ## Features
-    - Multi-language Lambda functions (Go and Node.js)
-    - Auto-scaling serverless architecture
-    - RESTful API design
-    - Comprehensive error handling
-    - Input validation
-    
+  description: Multi-language serverless CRUD API built with AWS SAM, Lambda, API Gateway, and DynamoDB.
   version: 1.0.0
-  contact:
-    name: API Support
-    email: support@example.com
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: https://api.example.com/v1
-    description: Production server
-  - url: https://staging-api.example.com/v1
-    description: Staging server
-  - url: http://localhost:3000
-    description: Local development server
+  - url: https://{api-id}.execute-api.{region}.amazonaws.com/{stage}
+    description: AWS API Gateway
+    variables:
+      api-id:
+        default: example123
+        description: API Gateway ID
+      region:
+        default: us-east-1
+        description: AWS region
+      stage:
+        default: dev
+        description: Deployment stage
+
+security:
+  - ApiKeyAuth: []
 
 paths:
   /items:
