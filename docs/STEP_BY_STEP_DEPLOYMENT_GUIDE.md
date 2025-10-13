@@ -307,9 +307,9 @@ aws logs tail /aws/apigateway/serverless-crud-api-dev --follow
 
 ## 🗑️ Step 7: Cleanup (When Done)
 
-### Complete Cleanup
+### Complete Cleanup with Orphaned Resource Detection
 ```bash
-# Clean up all stacks (with confirmation)
+# Clean up all stacks with automatic orphaned resource detection
 ./scripts/cleanup.sh --stage dev --region us-east-1
 ```
 
@@ -338,7 +338,29 @@ Are you sure you want to delete all stacks? (y/N): y
 🗑️  Deleting Foundation Stack...
 ✅ Foundation Stack deleted successfully
 
-🎉 Cleanup completed successfully!
+🎉 CloudFormation stacks cleanup completed successfully!
+
+🔍 Checking for orphaned resources...
+✅ No orphaned resources detected - cleanup is complete!
+
+🎯 Complete cleanup finished!
+Your AWS account is now clean and cost-optimized for serverless architecture.
+```
+
+**If Orphaned Resources Are Found:**
+```
+🔍 Checking for orphaned resources...
+⚠️  ORPHANED RESOURCES DETECTED!
+
+💰 These resources will continue to incur costs even though CloudFormation stacks are deleted.
+🧹 To clean them up, run:
+   ./scripts/cleanup-orphaned-resources.sh --execute --stage dev --region us-east-1
+
+Would you like to clean up orphaned resources now? (y/N): y
+
+🧹 Running orphaned resource cleanup...
+[Orphaned resource cleanup process...]
+✅ Orphaned resources have been removed.
 ```
 
 ### Force Cleanup (No Confirmation)
@@ -355,6 +377,42 @@ aws cloudformation list-stacks --region us-east-1 \
 ```
 
 **Expected Output:** `[]` (empty array)
+
+## 🧹 Orphaned Resource Management
+
+### Why This Matters for Serverless
+In a **serverless mindset**, we expect **zero cost when not in use**. Orphaned resources violate this principle and can lead to unexpected costs!
+
+### Check for Orphaned Resources
+```bash
+# Scan for orphaned resources
+./scripts/detect-orphaned-resources.sh --stage dev --region us-east-1
+```
+
+### Clean Up Orphaned Resources
+```bash
+# Dry run (see what would be deleted)
+./scripts/cleanup-orphaned-resources.sh --stage dev --region us-east-1
+
+# Actually delete orphaned resources
+./scripts/cleanup-orphaned-resources.sh --execute --stage dev --region us-east-1
+```
+
+### What Gets Detected
+- **API Gateway APIs** not managed by CloudFormation
+- **Lambda Functions** without CloudFormation tags
+- **DynamoDB Tables** that are orphaned (⚠️ expensive!)
+- **CloudWatch Log Groups** from deleted functions
+- **S3 Buckets** with project-related content
+
+### Cost Impact Examples
+| Resource | Potential Monthly Cost |
+|----------|----------------------|
+| Orphaned DynamoDB Table | $50-200 |
+| Orphaned API Gateway | $10-50 |
+| Multiple Log Groups | $5-20 |
+
+**💡 The enhanced cleanup script automatically detects and offers to clean orphaned resources!**
 
 ## 🔧 API Key Management Commands
 
