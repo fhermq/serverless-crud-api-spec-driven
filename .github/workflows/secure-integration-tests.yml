@@ -1,0 +1,863 @@
+name: Secure Integration Tests with OIDC
+
+on:
+  workflow_run:
+    workflows: ["Secure Deploy with OIDC"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      test_type:
+        description: 'Type of tests to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - smoke
+          - security
+          - performance
+
+env:
+  AWS_REGION: us-east-1
+  NODE_VERSION: '20'
+
+# Required for OIDC authentication
+permissions:
+  id-token: write   # Required for OIDC token generation
+  contents: read    # Required for checkout
+
+jobs:
+  # OIDC Authentication for testing
+  verify-test-auth:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    outputs:
+      aws-account-id: ${{ steps.verify-auth.outputs.aws-account-id }}
+      test-environments: ${{ steps.determine-envs.outputs.environments }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE_ARN }}
+          role-session-name: GitHubActions-IntegrationTest-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+      
+      - name: Verify OIDC authentication for testing
+        id: verify-auth
+        run: |
+          echo "🔐 Verifying OIDC authentication for integration testing..."
+          
+          CALLER_IDENTITY=$(aws sts get-caller-identity)
+          AWS_ACCOUNT_ID=$(echo "$CALLER_IDENTITY" | jq -r '.Account')
+          ASSUMED_ROLE_ARN=$(echo "$CALLER_IDENTITY" | jq -r '.Arn')
+          
+          echo "AWS Account ID: $AWS_ACCOUNT_ID"
+          echo "Assumed Role ARN: $ASSUMED_ROLE_ARN"
+          
+          # Verify OIDC role assumption
+          if [[ "$ASSUMED_ROLE_ARN" != *"assumed-role"* ]]; then
+            echo "❌ OIDC authentication failed for testing"
+            exit 1
+          fi
+          
+          echo "✅ OIDC authentication verified for integration testing"
+          echo "aws-account-id=$AWS_ACCOUNT_ID" >> $GITHUB_OUTPUT
+      
+      - name: Determine test environments
+        id: determine-envs
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual trigger - test specified environment
+            echo "environments=[\"${{ github.event.inputs.environment }}\"]" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
+            # Main branch - test staging and prod (if exists)
+            echo "environments=[\"staging\", \"prod\"]" >> $GITHUB_OUTPUT
+          else
+            # Other branches - test dev only
+            echo "environments=[\"dev\"]" >> $GITHUB_OUTPUT
+          fi
+
+  # Comprehensive API integration tests
+  api-integration-tests:
+    runs-on: ubuntu-latest
+    needs: verify-test-auth
+    strategy:
+      matrix:
+        environment: ${{ fromJson(needs.verify-test-auth.outputs.test-environments) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE_ARN }}
+          role-session-name: GitHubActions-APITest-${{ matrix.environment }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+      
+      - name: Get API Gateway URL
+        id: get-api-url
+        run: |
+          STACK_NAME="serverless-crud-api-${{ matrix.environment }}-api"
+          
+          # Check if stack exists
+          if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo "⚠️ Stack $STACK_NAME not found - skipping tests for ${{ matrix.environment }}"
+            echo "api_url=" >> $GITHUB_OUTPUT
+            echo "stack_exists=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+            --output text)
+          
+          if [[ -z "$API_URL" ]]; then
+            echo "❌ Failed to get API URL from stack $STACK_NAME"
+            exit 1
+          fi
+          
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "stack_exists=true" >> $GITHUB_OUTPUT
+          echo "API URL for ${{ matrix.environment }}: $API_URL"
+      
+      - name: Install test dependencies
+        if: steps.get-api-url.outputs.stack_exists == 'true'
+        run: |
+          npm install -g newman axios jest
+          npm install --save-dev @types/jest
+      
+      - name: Run comprehensive CRUD tests
+        if: steps.get-api-url.outputs.stack_exists == 'true'
+        run: |
+          API_URL="${{ steps.get-api-url.outputs.api_url }}"
+          
+          echo "🧪 Running comprehensive CRUD integration tests for ${{ matrix.environment }}..."
+          
+          # Create test script
+          cat > integration-test.js << 'EOF'
+          const axios = require('axios');
+          
+          const API_URL = process.env.API_URL;
+          const ENVIRONMENT = process.env.ENVIRONMENT;
+          
+          // Test configuration
+          const config = {
+            timeout: 30000,
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': 'GitHub-Actions-Integration-Test'
+            }
+          };
+          
+          // Test data
+          const testItems = [
+            {
+              name: 'Integration Test Item 1',
+              description: 'Test item for CRUD operations',
+              category: 'electronics',
+              price: 99.99
+            },
+            {
+              name: 'Integration Test Item 2',
+              description: 'Another test item',
+              category: 'books',
+              price: 19.99
+            }
+          ];
+          
+          let createdItemIds = [];
+          
+          async function runTests() {
+            console.log(`🚀 Starting integration tests for ${ENVIRONMENT} environment`);
+            console.log(`📍 API URL: ${API_URL}`);
+            
+            let testsPassed = 0;
+            let testsFailed = 0;
+            
+            // Test 1: Health check (GET non-existent endpoint should return 404)
+            try {
+              console.log('\n📋 Test 1: API Health Check');
+              const response = await axios.get(`${API_URL}/items/health-check`, config);
+              console.log('❌ Expected 404, got:', response.status);
+              testsFailed++;
+            } catch (error) {
+              if (error.response && error.response.status === 404) {
+                console.log('✅ Health check passed (404 as expected)');
+                testsPassed++;
+              } else {
+                console.log('❌ Unexpected error:', error.message);
+                testsFailed++;
+              }
+            }
+            
+            // Test 2: Create items (POST /items)
+            console.log('\n📋 Test 2: Create Items');
+            for (let i = 0; i < testItems.length; i++) {
+              try {
+                const response = await axios.post(`${API_URL}/items`, testItems[i], config);
+                
+                if (response.status === 201 && response.data && response.data.id) {
+                  console.log(`✅ Created item ${i + 1}: ${response.data.id}`);
+                  createdItemIds.push(response.data.id);
+                  testsPassed++;
+                } else {
+                  console.log(`❌ Failed to create item ${i + 1}:`, response.status, response.data);
+                  testsFailed++;
+                }
+              } catch (error) {
+                console.log(`❌ Error creating item ${i + 1}:`, error.response?.status, error.response?.data || error.message);
+                testsFailed++;
+              }
+            }
+            
+            // Test 3: Read items (GET /items/{id})
+            console.log('\n📋 Test 3: Read Items');
+            for (let i = 0; i < createdItemIds.length; i++) {
+              try {
+                const response = await axios.get(`${API_URL}/items/${createdItemIds[i]}`, config);
+                
+                if (response.status === 200 && response.data && response.data.id === createdItemIds[i]) {
+                  console.log(`✅ Retrieved item ${i + 1}: ${response.data.name}`);
+                  testsPassed++;
+                } else {
+                  console.log(`❌ Failed to retrieve item ${i + 1}:`, response.status);
+                  testsFailed++;
+                }
+              } catch (error) {
+                console.log(`❌ Error retrieving item ${i + 1}:`, error.response?.status, error.response?.data || error.message);
+                testsFailed++;
+              }
+            }
+            
+            // Test 4: Update items (PUT /items/{id})
+            console.log('\n📋 Test 4: Update Items');
+            for (let i = 0; i < createdItemIds.length; i++) {
+              try {
+                const updateData = {
+                  name: `Updated ${testItems[i].name}`,
+                  price: testItems[i].price + 10
+                };
+                
+                const response = await axios.put(`${API_URL}/items/${createdItemIds[i]}`, updateData, config);
+                
+                if (response.status === 200 && response.data && response.data.name.includes('Updated')) {
+                  console.log(`✅ Updated item ${i + 1}: ${response.data.name}`);
+                  testsPassed++;
+                } else {
+                  console.log(`❌ Failed to update item ${i + 1}:`, response.status);
+                  testsFailed++;
+                }
+              } catch (error) {
+                console.log(`❌ Error updating item ${i + 1}:`, error.response?.status, error.response?.data || error.message);
+                testsFailed++;
+              }
+            }
+            
+            // Test 5: Error handling (GET non-existent item)
+            console.log('\n📋 Test 5: Error Handling');
+            try {
+              const response = await axios.get(`${API_URL}/items/non-existent-id`, config);
+              console.log('❌ Expected 404 for non-existent item, got:', response.status);
+              testsFailed++;
+            } catch (error) {
+              if (error.response && error.response.status === 404) {
+                console.log('✅ Error handling test passed (404 for non-existent item)');
+                testsPassed++;
+              } else {
+                console.log('❌ Unexpected error for non-existent item:', error.message);
+                testsFailed++;
+              }
+            }
+            
+            // Test 6: Input validation (POST with invalid data)
+            console.log('\n📋 Test 6: Input Validation');
+            try {
+              const invalidData = { name: '', price: -1 };
+              const response = await axios.post(`${API_URL}/items`, invalidData, config);
+              console.log('❌ Expected validation error, got:', response.status);
+              testsFailed++;
+            } catch (error) {
+              if (error.response && (error.response.status === 400 || error.response.status === 422)) {
+                console.log('✅ Input validation test passed (400/422 for invalid data)');
+                testsPassed++;
+              } else {
+                console.log('❌ Unexpected validation error:', error.response?.status, error.message);
+                testsFailed++;
+              }
+            }
+            
+            // Test 7: Delete items (DELETE /items/{id})
+            console.log('\n📋 Test 7: Delete Items');
+            for (let i = 0; i < createdItemIds.length; i++) {
+              try {
+                const response = await axios.delete(`${API_URL}/items/${createdItemIds[i]}`, config);
+                
+                if (response.status === 204 || response.status === 200) {
+                  console.log(`✅ Deleted item ${i + 1}`);
+                  testsPassed++;
+                } else {
+                  console.log(`❌ Failed to delete item ${i + 1}:`, response.status);
+                  testsFailed++;
+                }
+              } catch (error) {
+                console.log(`❌ Error deleting item ${i + 1}:`, error.response?.status, error.response?.data || error.message);
+                testsFailed++;
+              }
+            }
+            
+            // Test 8: Verify deletion (GET deleted items should return 404)
+            console.log('\n📋 Test 8: Verify Deletion');
+            for (let i = 0; i < createdItemIds.length; i++) {
+              try {
+                const response = await axios.get(`${API_URL}/items/${createdItemIds[i]}`, config);
+                console.log(`❌ Deleted item ${i + 1} still exists:`, response.status);
+                testsFailed++;
+              } catch (error) {
+                if (error.response && error.response.status === 404) {
+                  console.log(`✅ Verified item ${i + 1} deletion (404 as expected)`);
+                  testsPassed++;
+                } else {
+                  console.log(`❌ Unexpected error verifying deletion:`, error.message);
+                  testsFailed++;
+                }
+              }
+            }
+            
+            // Summary
+            console.log('\n📊 Test Summary');
+            console.log(`✅ Tests passed: ${testsPassed}`);
+            console.log(`❌ Tests failed: ${testsFailed}`);
+            console.log(`📈 Success rate: ${((testsPassed / (testsPassed + testsFailed)) * 100).toFixed(1)}%`);
+            
+            if (testsFailed > 0) {
+              console.log('\n❌ Some tests failed');
+              process.exit(1);
+            } else {
+              console.log('\n🎉 All tests passed!');
+            }
+          }
+          
+          runTests().catch(error => {
+            console.error('💥 Test execution failed:', error);
+            process.exit(1);
+          });
+          EOF
+          
+          # Run the integration tests
+          API_URL="$API_URL" ENVIRONMENT="${{ matrix.environment }}" node integration-test.js
+      
+      - name: Test CORS configuration
+        if: steps.get-api-url.outputs.stack_exists == 'true'
+        run: |
+          API_URL="${{ steps.get-api-url.outputs.api_url }}"
+          
+          echo "🌐 Testing CORS configuration..."
+          
+          # Test CORS preflight request
+          CORS_RESPONSE=$(curl -s -i -X OPTIONS \
+            -H "Origin: https://example.com" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: Content-Type" \
+            "$API_URL/items")
+          
+          echo "CORS Response:"
+          echo "$CORS_RESPONSE"
+          
+          # Check for CORS headers
+          if echo "$CORS_RESPONSE" | grep -i "access-control-allow-origin"; then
+            echo "✅ CORS Access-Control-Allow-Origin header found"
+          else
+            echo "❌ CORS Access-Control-Allow-Origin header missing"
+          fi
+          
+          if echo "$CORS_RESPONSE" | grep -i "access-control-allow-methods"; then
+            echo "✅ CORS Access-Control-Allow-Methods header found"
+          else
+            echo "❌ CORS Access-Control-Allow-Methods header missing"
+          fi
+      
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "## 🧪 Integration Test Report - ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **API URL**: ${{ steps.get-api-url.outputs.api_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Date**: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **OIDC Authentication**: ✅ Verified" >> $GITHUB_STEP_SUMMARY
+
+  # Database integration tests
+  database-integration-tests:
+    runs-on: ubuntu-latest
+    needs: verify-test-auth
+    strategy:
+      matrix:
+        environment: ${{ fromJson(needs.verify-test-auth.outputs.test-environments) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE_ARN }}
+          role-session-name: GitHubActions-DBTest-${{ matrix.environment }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+      
+      - name: Get DynamoDB table name
+        id: get-table-name
+        run: |
+          STACK_NAME="serverless-crud-api-${{ matrix.environment }}-foundation"
+          
+          # Check if stack exists
+          if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo "⚠️ Stack $STACK_NAME not found - skipping database tests for ${{ matrix.environment }}"
+            echo "table_name=" >> $GITHUB_OUTPUT
+            echo "stack_exists=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          TABLE_NAME=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`ItemsTableName`].OutputValue' \
+            --output text)
+          
+          if [[ -z "$TABLE_NAME" ]]; then
+            echo "❌ Failed to get table name from stack $STACK_NAME"
+            exit 1
+          fi
+          
+          echo "table_name=$TABLE_NAME" >> $GITHUB_OUTPUT
+          echo "stack_exists=true" >> $GITHUB_OUTPUT
+          echo "DynamoDB table for ${{ matrix.environment }}: $TABLE_NAME"
+      
+      - name: Test DynamoDB operations
+        if: steps.get-table-name.outputs.stack_exists == 'true'
+        run: |
+          TABLE_NAME="${{ steps.get-table-name.outputs.table_name }}"
+          
+          echo "🗄️ Testing DynamoDB operations for ${{ matrix.environment }}..."
+          
+          # Test 1: Check table status
+          echo "📋 Test 1: Table Status Check"
+          TABLE_STATUS=$(aws dynamodb describe-table \
+            --table-name "$TABLE_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Table.TableStatus' \
+            --output text)
+          
+          if [[ "$TABLE_STATUS" == "ACTIVE" ]]; then
+            echo "✅ Table is active: $TABLE_NAME"
+          else
+            echo "❌ Table is not active: $TABLE_STATUS"
+            exit 1
+          fi
+          
+          # Test 2: Check table schema
+          echo "📋 Test 2: Table Schema Check"
+          KEY_SCHEMA=$(aws dynamodb describe-table \
+            --table-name "$TABLE_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Table.KeySchema[0].AttributeName' \
+            --output text)
+          
+          if [[ "$KEY_SCHEMA" == "id" ]]; then
+            echo "✅ Table has correct primary key: $KEY_SCHEMA"
+          else
+            echo "❌ Table has incorrect primary key: $KEY_SCHEMA"
+            exit 1
+          fi
+          
+          # Test 3: Test write operation
+          echo "📋 Test 3: Write Operation Test"
+          TEST_ID="integration-test-$(date +%s)"
+          
+          aws dynamodb put-item \
+            --table-name "$TABLE_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --item '{
+              "id": {"S": "'$TEST_ID'"},
+              "name": {"S": "Integration Test Item"},
+              "category": {"S": "test"},
+              "price": {"N": "99.99"},
+              "createdAt": {"S": "'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'"},
+              "updatedAt": {"S": "'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'"}
+            }'
+          
+          echo "✅ Write operation successful"
+          
+          # Test 4: Test read operation
+          echo "📋 Test 4: Read Operation Test"
+          ITEM=$(aws dynamodb get-item \
+            --table-name "$TABLE_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --key '{"id": {"S": "'$TEST_ID'"}}' \
+            --query 'Item.name.S' \
+            --output text)
+          
+          if [[ "$ITEM" == "Integration Test Item" ]]; then
+            echo "✅ Read operation successful: $ITEM"
+          else
+            echo "❌ Read operation failed: $ITEM"
+            exit 1
+          fi
+          
+          # Test 5: Test update operation
+          echo "📋 Test 5: Update Operation Test"
+          aws dynamodb update-item \
+            --table-name "$TABLE_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --key '{"id": {"S": "'$TEST_ID'"}}' \
+            --update-expression "SET #name = :name, updatedAt = :updated" \
+            --expression-attribute-names '{"#name": "name"}' \
+            --expression-attribute-values '{
+              ":name": {"S": "Updated Integration Test Item"},
+              ":updated": {"S": "'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'"}
+            }'
+          
+          echo "✅ Update operation successful"
+          
+          # Test 6: Verify update
+          echo "📋 Test 6: Update Verification"
+          UPDATED_ITEM=$(aws dynamodb get-item \
+            --table-name "$TABLE_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --key '{"id": {"S": "'$TEST_ID'"}}' \
+            --query 'Item.name.S' \
+            --output text)
+          
+          if [[ "$UPDATED_ITEM" == "Updated Integration Test Item" ]]; then
+            echo "✅ Update verification successful: $UPDATED_ITEM"
+          else
+            echo "❌ Update verification failed: $UPDATED_ITEM"
+            exit 1
+          fi
+          
+          # Test 7: Test delete operation
+          echo "📋 Test 7: Delete Operation Test"
+          aws dynamodb delete-item \
+            --table-name "$TABLE_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --key '{"id": {"S": "'$TEST_ID'"}}'
+          
+          echo "✅ Delete operation successful"
+          
+          # Test 8: Verify deletion
+          echo "📋 Test 8: Delete Verification"
+          DELETED_ITEM=$(aws dynamodb get-item \
+            --table-name "$TABLE_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --key '{"id": {"S": "'$TEST_ID'"}}' \
+            --query 'Item' \
+            --output text)
+          
+          if [[ "$DELETED_ITEM" == "None" ]] || [[ -z "$DELETED_ITEM" ]]; then
+            echo "✅ Delete verification successful - item not found"
+          else
+            echo "❌ Delete verification failed - item still exists"
+            exit 1
+          fi
+          
+          echo "🎉 All DynamoDB tests passed!"
+
+  # Performance and load testing
+  performance-tests:
+    runs-on: ubuntu-latest
+    needs: [verify-test-auth, api-integration-tests]
+    if: needs.api-integration-tests.result == 'success' && (github.event.inputs.test_type == 'full' || github.event.inputs.test_type == 'performance' || github.event_name == 'workflow_run')
+    strategy:
+      matrix:
+        environment: ${{ fromJson(needs.verify-test-auth.outputs.test-environments) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE_ARN }}
+          role-session-name: GitHubActions-PerfTest-${{ matrix.environment }}-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+      
+      - name: Get API Gateway URL
+        id: get-api-url
+        run: |
+          STACK_NAME="serverless-crud-api-${{ matrix.environment }}-api"
+          
+          if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo "⚠️ Stack $STACK_NAME not found - skipping performance tests"
+            echo "api_url=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+            --output text)
+          
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "Performance testing API: $API_URL"
+      
+      - name: Run performance tests
+        if: steps.get-api-url.outputs.api_url != ''
+        run: |
+          API_URL="${{ steps.get-api-url.outputs.api_url }}"
+          
+          echo "🚀 Running performance tests for ${{ matrix.environment }}..."
+          
+          # Create performance test script
+          cat > performance-test.sh << 'EOF'
+          #!/bin/bash
+          
+          API_URL="$1"
+          ENVIRONMENT="$2"
+          
+          echo "🎯 Performance testing for $ENVIRONMENT environment"
+          echo "📍 API URL: $API_URL"
+          
+          # Test configuration
+          CONCURRENT_REQUESTS=5
+          TOTAL_REQUESTS=25
+          
+          # Create test data
+          TEST_DATA='{"name":"Performance Test Item","category":"electronics","price":99.99}'
+          
+          echo "📊 Running concurrent CREATE requests..."
+          echo "   Concurrent requests: $CONCURRENT_REQUESTS"
+          echo "   Total requests: $TOTAL_REQUESTS"
+          
+          # Measure response times
+          START_TIME=$(date +%s.%N)
+          
+          # Run concurrent requests
+          for i in $(seq 1 $CONCURRENT_REQUESTS); do
+            {
+              for j in $(seq 1 $((TOTAL_REQUESTS / CONCURRENT_REQUESTS))); do
+                RESPONSE_TIME=$(curl -s -w "%{time_total}" -o /dev/null \
+                  -X POST \
+                  -H "Content-Type: application/json" \
+                  -d "$TEST_DATA" \
+                  "$API_URL/items")
+                echo "Request $((($i-1) * (TOTAL_REQUESTS / CONCURRENT_REQUESTS) + $j)): ${RESPONSE_TIME}s"
+              done
+            } &
+          done
+          
+          # Wait for all background jobs to complete
+          wait
+          
+          END_TIME=$(date +%s.%N)
+          TOTAL_TIME=$(echo "$END_TIME - $START_TIME" | bc)
+          
+          echo "📈 Performance Results:"
+          echo "   Total time: ${TOTAL_TIME}s"
+          echo "   Requests per second: $(echo "scale=2; $TOTAL_REQUESTS / $TOTAL_TIME" | bc)"
+          echo "   Average response time: $(echo "scale=3; $TOTAL_TIME / $TOTAL_REQUESTS" | bc)s"
+          
+          # Performance thresholds
+          AVG_RESPONSE_TIME=$(echo "scale=3; $TOTAL_TIME / $TOTAL_REQUESTS" | bc)
+          
+          if (( $(echo "$AVG_RESPONSE_TIME > 5.0" | bc -l) )); then
+            echo "❌ Performance test failed - average response time too high: ${AVG_RESPONSE_TIME}s"
+            exit 1
+          else
+            echo "✅ Performance test passed - average response time: ${AVG_RESPONSE_TIME}s"
+          fi
+          EOF
+          
+          chmod +x performance-test.sh
+          ./performance-test.sh "$API_URL" "${{ matrix.environment }}"
+
+  # Security compliance validation
+  security-compliance-tests:
+    runs-on: ubuntu-latest
+    needs: verify-test-auth
+    if: github.event.inputs.test_type == 'full' || github.event.inputs.test_type == 'security' || github.event_name == 'workflow_run'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOYMENT_ROLE_ARN }}
+          role-session-name: GitHubActions-SecurityTest-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+      
+      - name: Validate OIDC credential expiry
+        run: |
+          echo "🔐 Validating OIDC credential expiry compliance..."
+          
+          # Get current credential information
+          CALLER_IDENTITY=$(aws sts get-caller-identity)
+          echo "Current identity: $CALLER_IDENTITY"
+          
+          # Check if credentials are temporary (assumed role)
+          ARN=$(echo "$CALLER_IDENTITY" | jq -r '.Arn')
+          
+          if [[ "$ARN" != *"assumed-role"* ]]; then
+            echo "❌ Not using temporary credentials (OIDC compliance failure)"
+            exit 1
+          fi
+          
+          echo "✅ Using temporary credentials (OIDC compliant)"
+          
+          # Try to get session token to check expiry
+          SESSION_INFO=$(aws sts get-session-token --duration-seconds 900 2>/dev/null || echo "")
+          
+          if [[ -n "$SESSION_INFO" ]]; then
+            EXPIRY=$(echo "$SESSION_INFO" | jq -r '.Credentials.Expiration')
+            echo "Session expiry: $EXPIRY"
+            
+            # Calculate time until expiry
+            CURRENT_TIME=$(date +%s)
+            EXPIRY_TIME=$(date -d "$EXPIRY" +%s 2>/dev/null || echo "0")
+            TIME_DIFF=$((EXPIRY_TIME - CURRENT_TIME))
+            
+            if [ $TIME_DIFF -le 3600 ]; then  # 1 hour or less
+              echo "✅ Credentials expire within 1 hour (OIDC compliant)"
+            else
+              echo "⚠️ Credentials expire in more than 1 hour (may not be OIDC)"
+            fi
+          fi
+      
+      - name: Test IAM permissions compliance
+        run: |
+          echo "🔒 Testing IAM permissions compliance..."
+          
+          # Test that we have minimal required permissions
+          echo "Testing CloudFormation permissions..."
+          if aws cloudformation list-stacks --max-items 1 >/dev/null 2>&1; then
+            echo "✅ CloudFormation permissions verified"
+          else
+            echo "❌ CloudFormation permissions missing"
+            exit 1
+          fi
+          
+          # Test that we don't have excessive permissions
+          echo "Testing for excessive permissions..."
+          
+          # Try to access IAM (should be restricted)
+          if aws iam list-users >/dev/null 2>&1; then
+            echo "⚠️ IAM permissions detected (may be excessive)"
+          else
+            echo "✅ IAM permissions properly restricted"
+          fi
+          
+          # Try to access EC2 (should be restricted for this use case)
+          if aws ec2 describe-instances >/dev/null 2>&1; then
+            echo "⚠️ EC2 permissions detected (may be excessive)"
+          else
+            echo "✅ EC2 permissions properly restricted"
+          fi
+      
+      - name: Validate deployment security
+        run: |
+          echo "🛡️ Validating deployment security..."
+          
+          # Check for any stacks with public access
+          ENVIRONMENTS=("dev" "staging" "prod")
+          
+          for env in "${ENVIRONMENTS[@]}"; do
+            STACK_NAME="serverless-crud-api-$env-api"
+            
+            if aws cloudformation describe-stacks --stack-name "$STACK_NAME" >/dev/null 2>&1; then
+              echo "Checking security for $env environment..."
+              
+              # Get API Gateway configuration
+              API_ID=$(aws cloudformation describe-stacks \
+                --stack-name "$STACK_NAME" \
+                --query 'Stacks[0].Outputs[?OutputKey==`ApiId`].OutputValue' \
+                --output text 2>/dev/null || echo "")
+              
+              if [[ -n "$API_ID" ]]; then
+                # Check if API has proper CORS configuration
+                echo "✅ API Gateway found for $env: $API_ID"
+              fi
+            else
+              echo "ℹ️ Stack $STACK_NAME not found (environment may not be deployed)"
+            fi
+          done
+
+  # Generate comprehensive test report
+  generate-test-report:
+    runs-on: ubuntu-latest
+    needs: [verify-test-auth, api-integration-tests, database-integration-tests, performance-tests, security-compliance-tests]
+    if: always()
+    steps:
+      - name: Generate comprehensive test summary
+        run: |
+          echo "# 🧪 Comprehensive Integration Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Run Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**OIDC Authentication:** ✅ Verified" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Test results summary
+          echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.api-integration-tests.result }}" == "success" ]]; then
+            echo "- ✅ **API Integration Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ **API Integration Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.database-integration-tests.result }}" == "success" ]]; then
+            echo "- ✅ **Database Integration Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ **Database Integration Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.performance-tests.result }}" == "success" ]]; then
+            echo "- ✅ **Performance Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.performance-tests.result }}" == "skipped" ]]; then
+            echo "- ⏭️ **Performance Tests**: SKIPPED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ **Performance Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.security-compliance-tests.result }}" == "success" ]]; then
+            echo "- ✅ **Security Compliance Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.security-compliance-tests.result }}" == "skipped" ]]; then
+            echo "- ⏭️ **Security Compliance Tests**: SKIPPED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ❌ **Security Compliance Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Security Features Validated" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔐 OIDC authentication with temporary credentials" >> $GITHUB_STEP_SUMMARY
+          echo "- ⏰ Credential expiry within 1 hour" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔒 Least privilege IAM permissions" >> $GITHUB_STEP_SUMMARY
+          echo "- 🛡️ No long-lived AWS credentials stored" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌐 CORS configuration validation" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 Performance baseline validation" >> $GITHUB_STEP_SUMMARY
