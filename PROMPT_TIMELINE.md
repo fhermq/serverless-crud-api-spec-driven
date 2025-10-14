@@ -360,6 +360,127 @@ Initial Concept → Requirements → Design → Tasks → Implementation → Sec
 
 ---
 
+## � ***Credit Cost Analysis Framework**
+
+### **Credit Tracking Template**
+
+*Note: Actual credit costs should be obtained from Kiro IDE usage analytics*
+
+#### **Session 1: Specification Development**
+- Prompt #1 (Project Initiation): ___ credits
+- Prompt #2 (Requirements Review): ___ credits  
+- Prompt #3 (Design Approval): ___ credits
+- Prompt #4 (Task Planning): ___ credits
+- **Session 1 Total**: ___ credits
+
+#### **Session 2: Core Implementation** 
+- Prompt #5 (Foundation Setup): ___ credits
+- Prompt #6 (Database Layer): ___ credits
+- Prompt #7 (Create Function): ___ credits
+- Prompt #8 (Get Function): ___ credits
+- Prompt #9 (Update Function): ___ credits
+- Prompt #10 (Delete Function): ___ credits
+- Prompt #11 (API Gateway): ___ credits
+- Prompt #12 (Architecture Analysis): ___ credits
+- Prompt #13 (Multi-Stack Implementation): ___ credits
+- **Session 2 Total**: ___ credits
+
+#### **Session 3: Security & Production**
+- Prompt #14 (OIDC Security): ___ credits
+- Prompt #15 (Monitoring Setup): ___ credits
+- Prompt #16 (CI/CD Pipeline): ___ credits
+- Prompt #17 (Deployment Scripts): ___ credits
+- Prompt #18 (Testing & Validation): ___ credits
+- **Session 3 Total**: ___ credits
+
+#### **Session 4: Local Development**
+- Prompt #19 (Local Testing): ___ credits
+- Prompt #20 (DynamoDB Local): ___ credits
+- Prompt #21 (Cleanup): ___ credits
+- **Session 4 Total**: ___ credits
+
+#### **Session 5: Documentation**
+- Prompt #22 (Technical Outcome): ___ credits
+- Prompt #23 (Time Analysis): ___ credits
+- Prompt #24 (Prompt Timeline): ___ credits
+- **Session 5 Total**: ___ credits
+
+### **Total Project Cost**: ___ credits
+
+### **Cost Efficiency Analysis**
+
+#### **Cost per Development Hour**
+- Total Credits: ___ credits
+- Total Development Time: 14 hours
+- **Cost per Hour**: ___ credits/hour
+
+#### **Cost per Feature**
+- Total Credits: ___ credits
+- Features Delivered: 4 CRUD operations + Security + Monitoring + CI/CD
+- **Cost per Feature**: ___ credits/feature
+
+#### **Cost vs Traditional Development**
+- Spec-Driven Credits: ___ credits
+- Traditional Development Estimate: 84-132 hours × ___ credits/hour = ___ credits
+- **Cost Savings**: ___% reduction in total credits
+
+### **ROI Calculation Framework**
+
+```
+ROI = (Traditional Development Cost - Spec-Driven Cost) / Spec-Driven Cost × 100%
+
+Where:
+- Traditional Development Cost = Estimated hours × Average credit rate
+- Spec-Driven Cost = Actual credits used
+- Time Savings = 89-94% (from time analysis)
+```
+
+### **Credit Optimization Insights**
+
+#### **Most Credit-Efficient Prompts** (Estimated)
+1. **Task-Specific Implementation** (Prompts #5-11)
+   - Clear scope and requirements
+   - Minimal back-and-forth
+   - Consistent patterns
+
+2. **Specification Prompts** (Prompts #1-4)
+   - High upfront cost but massive downstream savings
+   - Prevented expensive rework cycles
+
+#### **Highest Credit Investment** (Estimated)
+1. **Architecture Design** (Prompts #3, #12-13)
+   - Complex technical decisions
+   - Multiple file creation and modification
+   - Long-term value creation
+
+2. **Security Implementation** (Prompts #14-16)
+   - Enterprise-grade security patterns
+   - Multiple AWS service integration
+   - Compliance requirements
+
+### **Credit Usage Recommendations**
+
+#### **Optimize Credit Efficiency**
+1. **Invest heavily in specifications** (15-20% of total credits)
+   - Prevents expensive rework
+   - Enables efficient implementation
+
+2. **Use task-specific prompts** for implementation
+   - Clear scope reduces credit usage
+   - Consistent patterns improve efficiency
+
+3. **Batch related changes** when possible
+   - Multiple file updates in single prompt
+   - Reduces context switching overhead
+
+#### **Expected Credit Distribution**
+- **Specification Phase**: 20-25% of total credits
+- **Implementation Phase**: 50-60% of total credits  
+- **Security & Production**: 15-20% of total credits
+- **Documentation**: 5-10% of total credits
+
+---
+
 ## 📈 **ROI of Prompt-Driven Development**
 
 ### **Quantified Benefits**
