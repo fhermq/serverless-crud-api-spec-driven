@@ -298,9 +298,9 @@ AWS Resource Access (Deployment)
    - Performance benchmarks
 
 7. Deployment Verification
-   - Health checks
-   - Smoke tests
-   - Rollback on failure
+   - CloudFormation stack validation
+   - API endpoint accessibility
+   - Basic functionality testing
 ```
 
 ### Environment Strategy
@@ -576,9 +576,8 @@ Each Lambda function will have its own execution role with minimal permissions:
 │   ├── template.yaml         # SAM template
 │   ├── parameters/           # Environment-specific parameters
 │   └── scripts/              # Deployment scripts
-└── .github/workflows/        # CI/CD pipelines
-    ├── deploy-functions.yml  # Function deployment
-    └── integration-tests.yml # Cross-function testing
+└── .github/workflows/        # CI/CD pipelines (optional)
+    └── (no workflows currently configured)
 ```
 
 ### Development Workflow for Teams

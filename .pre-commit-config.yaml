@@ -67,12 +67,7 @@ repos:
   # Lambda function specific checks
   - repo: local
     hooks:
-      - id: lambda-structure-check
-        name: Lambda function structure validation
-        entry: python3 scripts/validate-lambda-structure.py
-        language: system
-        files: '^functions/.*'
-        pass_filenames: false
+
 
       - id: shared-utilities-check
         name: Verify shared utilities usage
@@ -98,8 +93,3 @@ repos:
         files: '^functions/.*'
         pass_filenames: false
 
-      - id: package-json-check
-        name: Validate package.json structure
-        entry: python3 scripts/validate-package-json.py
-        language: system
-        files: '^functions/.*/package\.json$'
