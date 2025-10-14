@@ -87,6 +87,7 @@ STACK_NAME="$PROJECT_NAME-$STAGE-stacktype"
 - Say **"Less is more"** - I'll simplify immediately
 - Say **"Follow pattern X"** - I'll use existing examples
 - Say **"Parametric"** - I'll ensure everything is configurable
+- Say **"Clean up the mess"** - I'll delete unnecessary files and simplify
 
 ### What I Should Always Ask
 - "What's the simplest approach?"
@@ -156,6 +157,9 @@ aws sts get-caller-identity # ✅ Use IAM roles/OIDC
 - ❌ **Committing secrets, keys, or passwords**
 - ❌ **Hardcoding credentials in code or templates**
 - ❌ **Using long-lived AWS access keys**
+- ❌ **Creating multiple files when one simple file works**
+- ❌ **Building complex CI/CD when simple GitHub Actions work**
+- ❌ **Adding contract testing frameworks when unit tests are sufficient**
 
 ## Reference Examples
 - **Parameter Pattern**: `infrastructure/scripts/deploy.sh`

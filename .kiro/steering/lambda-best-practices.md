@@ -188,7 +188,7 @@ The following checks should be automated in CI/CD:
 ### Deployment Phase
 1. All checklist items verified
 2. Deployment pipeline runs automated tests
-3. Post-deployment smoke tests
+3. Post-deployment validation
 4. Monitoring alerts configured
 
 ## Enforcement
